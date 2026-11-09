@@ -58,6 +58,7 @@ jobs:
       # Run a real daemon against the mock panel and make sure the app renders its state.
       - name: menu bar app reports connection and current mode
         run: |
+          set -o pipefail
           node dist/cli.js daemon --mock --port 7676 --hold-ms 0 > daemon.log 2>&1 &
           for i in $(seq 1 50); do curl -sf http://127.0.0.1:7676/health >/dev/null && break; sleep 0.2; done
           APP=menubar/build/Clawdbar.app/Contents/MacOS/Clawdbar
@@ -70,7 +71,9 @@ jobs:
           echo "--- after forcing reading"; "$APP" --check | tee check2.txt
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
-          kill %1
+          kill %1; sleep 1
           echo "--- daemon down"
-          if "$APP" --check | tee check3.txt; then echo "expected failure when daemon is down"; exit 1; fi
+          set +e; "$APP" --check > check3.txt; rc=$?; set -e
+          cat check3.txt
+          test "$rc" -ne 0
           grep -q '^title: offline' check3.txt
