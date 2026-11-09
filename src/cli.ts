@@ -10,7 +10,7 @@ import { writeAnims, buildAnims } from './tools/build-anims.js';
 import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath } from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
 import { BtPairedDevice, MockLink, RfcommLink, pickSppChannel } from './daemon/link.js';
-import { encodeBrightness, encodeImage } from './protocol/divoom.js';
+import { encodeBrightness, encodeGetSettings, encodeImage } from './protocol/divoom.js';
 import { Rgb, PIXELS } from './anim/types.js';
 import { Device } from './daemon/device.js';
 import { loadAnimSet } from './anim/load.js';
@@ -23,6 +23,7 @@ Usage:
   clawdbox discover                 list paired Bluetooth devices (needs bluetooth-serial-port)
   clawdbox send <state> --mac MAC [--anims DIR]      push one animation and exit (smoke test)
   clawdbox diag --mac MAC [--channel N]              step through brightness, still image, animation; log replies
+  clawdbox scan --mac MAC [LAST]                     try RFCOMM channels 1..LAST (default 30) and report which one answers
   clawdbox sprites [--out art/anims]                 write the built-in Clawd sprites as JSON
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
   clawdbox install-hooks [--url http://127.0.0.1:7676/event] [--http]   merge hooks into ~/.claude/settings.json
@@ -182,6 +183,41 @@ async function main() {
       return;
     }
 
+    case 'scan': {
+      // Try every RFCOMM channel; the one that answers the settings query is the serial port.
+      const mac = requireMac();
+      const from = v.channel ? Number(v.channel) : 1;
+      const to = Number(positionals[1] ?? 30);
+      const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const results: { channel: number; connected: boolean; reply?: string; error?: string }[] = [];
+      for (let ch = from; ch <= to; ch++) {
+        const link = new RfcommLink(mac, ch, 6000);
+        let reply: Buffer | undefined;
+        link.on('data', (b: Buffer) => {
+          if (b.length) reply = reply ? Buffer.concat([reply, b]) : b;
+        });
+        process.stdout.write(`channel ${String(ch).padStart(2)}: `);
+        try {
+          await link.connect();
+          await pause(400);
+          await link.write(encodeGetSettings());
+          await pause(1500);
+          const hex = reply?.toString('hex');
+          results.push({ channel: ch, connected: true, reply: hex });
+          console.log(hex ? `CONNECTED, replied ${hex}   <-- this is the one` : 'connected, no reply');
+        } catch (e) {
+          results.push({ channel: ch, connected: false, error: (e as Error).message });
+          console.log(`no (${(e as Error).message})`);
+        } finally {
+          link.close();
+          await pause(600);
+        }
+      }
+      const winner = results.find((r) => r.reply);
+      console.log(winner ? `\nUse --channel ${winner.channel}` : '\nNo channel replied. Paste this output back to me.');
+      return;
+    }
+
     case 'diag': {
       // Step through commands of increasing complexity so we can see where the box stops reacting.
       const link = new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
@@ -196,6 +232,7 @@ async function main() {
       };
       await device.ensureConnected();
       console.log(`connected on channel ${link.channelUsed}`);
+      await step('0. settings query (box should send a reply)', () => device.send([encodeGetSettings()]));
       await step('1. brightness 10% (panel should dim)', () => device.send([encodeBrightness(10)]));
       await step('2. brightness 100% (panel should brighten)', () => device.send([encodeBrightness(100)]));
       const solid = (c: Rgb): Rgb[] => Array.from({ length: PIXELS }, () => c);

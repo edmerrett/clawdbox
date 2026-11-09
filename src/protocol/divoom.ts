@@ -23,6 +23,8 @@ export const CMD_IMAGE = 0x44;
 export const CMD_CHANNEL = 0x45;
 export const CMD_ANIMATION = 0x49;
 export const CMD_BRIGHTNESS = 0x74;
+/** Ask the box for its current settings; it answers with 01 .. 04 46 55 .. 02. */
+export const CMD_GET_SETTINGS = 0x46;
 
 /** Max frame-data bytes per animation packet. */
 export const ANIM_CHUNK = 200;
@@ -114,6 +116,10 @@ export function encodeAnimation(anim: Anim): Buffer[] {
 export function encodeBrightness(percent: number): Buffer {
   const b = Math.max(0, Math.min(100, Math.round(percent)));
   return wrap([CMD_BRIGHTNESS, b]);
+}
+
+export function encodeGetSettings(): Buffer {
+  return wrap([CMD_GET_SETTINGS]);
 }
 
 export function encodeChannel(ch: Channel): Buffer {

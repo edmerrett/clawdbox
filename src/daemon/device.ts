@@ -32,6 +32,7 @@ export class Device {
   ) {
     this.log = opts.log ?? (() => {});
     link.on('data', (buf: Buffer) => {
+      if (!buf.length) return; // the library emits an empty buffer on close
       this.replies++;
       this.log(`reply: ${buf.toString('hex')}`);
     });
