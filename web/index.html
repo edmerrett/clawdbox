@@ -9,11 +9,11 @@
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding:16px; }
   h1 { font-size:16px; margin:0 0 4px; } h1 span { color:var(--accent); }
   .status { color:var(--muted); margin-bottom:16px; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
   .card { background:var(--card); border-radius:8px; padding:12px; text-align:center; cursor:pointer; border:2px solid transparent; }
   .card.current { border-color:var(--accent); }
   .card.pending { border-style:dashed; border-color:var(--muted); }
-  canvas { width:160px; height:160px; image-rendering:pixelated; background:#000; border-radius:4px; display:block; margin:0 auto 8px; }
+  canvas { width:128px; height:128px; image-rendering:pixelated; background:#000; border-radius:4px; display:block; margin:0 auto 8px; }
   .name { font-weight:600; } .meta { color:var(--muted); font-size:12px; }
   .hint { color:var(--muted); margin-top:16px; font-size:12px; }
   label { color:var(--muted); font-size:12px; margin-left:12px; }
@@ -23,7 +23,7 @@
 <h1><span>clawdbox</span> preview</h1>
 <div class="status" id="status">connecting…</div>
 <div class="grid" id="grid"></div>
-<p class="hint">Click a card to force that state on the device (until the next hook event). Shown with LED gamma
+<p class="hint">Click a card to force that state on the device (until the next hook event). wave/done/error/heart are short flashes; coffee/vibing are the long-idle stages. Shown with LED gamma
   <label><input type="checkbox" id="gamma" checked> gamma 2.2</label></p>
 <script>
 const SIZE = 16, SCALE = 10;
@@ -64,7 +64,7 @@ function player(name, anim) {
 
 async function load() {
   const anims = await (await fetch('/anims')).json();
-  for (const name of ['idle','thinking','reading','writing','running','needs-you']) if (anims[name]) player(name, anims[name]);
+  for (const name of Object.keys(anims)) player(name, anims[name]);
   poll();
 }
 async function poll() {

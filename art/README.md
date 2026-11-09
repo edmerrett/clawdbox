@@ -1,6 +1,6 @@
 # Drawing the sprites
 
-The daemon needs six looping animations, one per state, as `art/anims/<state>.json`:
+The daemon needs one looping animation per state, as `art/anims/<state>.json`. The six core states:
 
 | state | when | suggested loop |
 |---|---|---|
@@ -10,6 +10,9 @@ The daemon needs six looping animations, one per state, as `art/anims/<state>.js
 | `writing` | Edit / Write / MultiEdit | typing: text appears, cursor blinks (6–8 frames, ~150 ms) |
 | `running` | Bash | running pose, speed lines, fast bob (4 frames, ~110 ms) |
 | `needs-you` | permission prompt / question | big `?` pulsing, wide eyes (2 frames, ~400 ms) |
+
+Plus `ultrathink` (rainbow thinking), the long-idle stages `coffee` and `vibing`, and the flashes `wave`, `done`,
+`error`, `heart`. `clawdbox build-anims` fills any you don't draw from the built-in set.
 
 The files in `anims/` are generated from the built-in Clawd sprites in `src/anim/clawd.ts` (`clawdbox sprites` regenerates them). Edit the ASCII poses there, or draw your own as below.
 

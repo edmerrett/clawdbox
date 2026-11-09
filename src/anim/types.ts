@@ -23,17 +23,48 @@ export function loopMs(anim: Anim): number {
   return anim.frames.reduce((n, f) => n + f.ms, 0);
 }
 
-export const STATES = ['idle', 'thinking', 'reading', 'writing', 'running', 'needs-you'] as const;
+/**
+ * Everything the panel can show. The first group are activity states derived
+ * from hook events; `coffee` and `vibing` are long-idle stages; the last group
+ * are short reactions (flashes) layered on top.
+ */
+export const STATES = [
+  'idle',
+  'thinking',
+  'ultrathink',
+  'reading',
+  'writing',
+  'running',
+  'needs-you',
+  'coffee',
+  'vibing',
+  'wave',
+  'done',
+  'error',
+  'heart',
+] as const;
 export type State = (typeof STATES)[number];
+
+/** States the reducer can put a session in. */
+export const ACTIVITY_STATES = ['idle', 'thinking', 'ultrathink', 'reading', 'writing', 'running', 'needs-you'] as const;
+export type ActivityState = (typeof ACTIVITY_STATES)[number];
+
+/** Short reactions shown for a few seconds, then the panel returns to the activity state. */
+export const FLASH_STATES = ['wave', 'done', 'error', 'heart'] as const;
+export type FlashState = (typeof FLASH_STATES)[number];
+
+/** Long-idle stages, in the order they appear after `idleStageAfterMs`. */
+export const IDLE_STAGES = ['coffee', 'vibing'] as const;
 
 export function isState(s: string): s is State {
   return (STATES as readonly string[]).includes(s);
 }
 
 /** Higher wins when several sessions disagree. */
-export const PRIORITY: Record<State, number> = {
+export const PRIORITY: Record<ActivityState, number> = {
   idle: 0,
   thinking: 1,
+  ultrathink: 1,
   reading: 2,
   writing: 3,
   running: 4,

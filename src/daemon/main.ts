@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Anim, State, loopMs } from '../anim/types.js';
+import { ACTIVITY_STATES, ActivityState, Anim, FLASH_STATES, FlashState, IDLE_STAGES, State, loopMs } from '../anim/types.js';
 import { loadAnimSet } from '../anim/load.js';
 import { clawdSprites } from '../anim/clawd.js';
 import { Device } from './device.js';
@@ -29,6 +29,10 @@ export interface DaemonConfig {
   brightness: number;
   minHoldMs: number;
   idleAfterMs: number;
+  flashMs: number;
+  doneAfterMs: number;
+  idleStageAfterMs: number;
+  idleStageCycleMs: number;
   sessionTtlMs: number;
   verbose: boolean;
 }
@@ -40,6 +44,10 @@ export const DEFAULT_CONFIG: DaemonConfig = {
   host: '127.0.0.1',
   minHoldMs: DEFAULT_SCHEDULER.minHoldMs,
   idleAfterMs: DEFAULT_SCHEDULER.idleAfterMs,
+  flashMs: DEFAULT_SCHEDULER.flashMs,
+  doneAfterMs: 10_000,
+  idleStageAfterMs: DEFAULT_SCHEDULER.idleStageAfterMs,
+  idleStageCycleMs: DEFAULT_SCHEDULER.idleStageCycleMs,
   sessionTtlMs: 6 * 60 * 60 * 1000,
   verbose: false,
 };
@@ -77,24 +85,35 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   }
   device.prepare(anims);
 
-  const reducer = new Reducer();
+  const reducer = new Reducer({ doneAfterMs: cfg.doneAfterMs });
   const sched = new Scheduler({
     minHoldMs: cfg.minHoldMs,
     idleAfterMs: cfg.idleAfterMs,
     maxBoundaryWaitMs: DEFAULT_SCHEDULER.maxBoundaryWaitMs,
+    flashMs: cfg.flashMs,
+    idleStageAfterMs: cfg.idleStageAfterMs,
+    idleStageCycleMs: cfg.idleStageCycleMs,
     loopMs: Object.fromEntries(Object.entries(anims).map(([k, a]) => [k, loopMs(a)])) as Record<State, number>,
   });
 
   let forced: State | null = null;
   const onEvent = (ev: HookEvent) => {
-    const action = reducer.apply(ev);
+    const now = Date.now();
+    const { action, flash } = reducer.apply(ev, now);
     forced = null;
-    debug(`event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)} agg=${reducer.aggregate()}`);
-    sched.setTarget(reducer.aggregate(), Date.now());
+    debug(`event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${reducer.aggregate()}`);
+    sched.setTarget(reducer.aggregate(), now);
+    if (flash) sched.flash(flash, now);
   };
   const onForce = (s: State) => {
     forced = s;
-    sched.setTarget(s, Date.now());
+    const now = Date.now();
+    if ((FLASH_STATES as readonly string[]).includes(s)) sched.flash(s as FlashState, now);
+    else if ((ACTIVITY_STATES as readonly string[]).includes(s)) sched.setTarget(s as ActivityState, now);
+    else {
+      // long-idle stage: pretend we've been idle long enough
+      sched.setTarget('idle', now - cfg.idleStageAfterMs - cfg.idleStageCycleMs * IDLE_STAGES.indexOf(s as (typeof IDLE_STAGES)[number]));
+    }
     log(`forced ${s}`);
   };
 

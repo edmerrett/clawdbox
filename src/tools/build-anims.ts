@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSy
 import { basename, dirname, join, resolve } from 'node:path';
 import { PNG } from 'pngjs';
 import { Anim, AnimFile, Frame, HEIGHT, Rgb, STATES, WIDTH, isState, toAnimFile } from '../anim/types.js';
+import { clawdSprites } from '../anim/clawd.js';
 
 interface AsepriteJson {
   frames: { filename: string; frame: { x: number; y: number; w: number; h: number }; duration: number }[] | Record<string, { frame: { x: number; y: number; w: number; h: number }; duration: number }>;
@@ -79,7 +80,15 @@ export function writeAnims(anims: Anim[], outDir: string): string[] {
     written.push(p);
   }
   const missing = STATES.filter((s) => !anims.some((a) => a.name === s));
-  if (missing.length) console.warn(`note: no art for ${missing.join(', ')} (the daemon needs all six; run "clawdbox sprites" for the rest)`);
+  if (missing.length) {
+    const builtin = clawdSprites();
+    for (const s of missing) {
+      const p = join(outDir, `${s}.json`);
+      writeFileSync(p, JSON.stringify(toAnimFile(builtin[s])));
+      written.push(p);
+    }
+    console.warn(`note: no art for ${missing.join(', ')}; used the built-in sprites for those`);
+  }
   return written;
 }
 

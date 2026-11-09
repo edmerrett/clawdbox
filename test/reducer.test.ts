@@ -45,6 +45,31 @@ test('a session walks through a turn', () => {
   assert.equal(r.sessions.size, 0);
 });
 
+test('flashes: wave on startup, heart on thanks, done after a long turn, error on failure', () => {
+  const r = new Reducer({ doneAfterMs: 10_000 });
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'SessionStart', source: 'startup' }, 0).flash, 'wave');
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'SessionStart', source: 'resume' }, 0).flash, undefined);
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'thanks, now fix the tests' }, 1000).flash, 'heart');
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'Stop' }, 5000).flash, undefined, 'short turn: no celebration');
+  r.apply({ session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'refactor everything' }, 10_000);
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash' }, 12_000).flash, 'error');
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', is_interrupt: true }, 12_500).flash, undefined);
+  assert.equal(r.apply({ session_id: 's', hook_event_name: 'Stop' }, 25_000).flash, 'done');
+});
+
+test('ultrathink in the prompt makes thinking rainbow for the rest of the turn', () => {
+  const r = new Reducer();
+  r.apply({ session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'ultrathink about this' }, 0);
+  assert.equal(r.aggregate(), 'ultrathink');
+  r.apply({ session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'Read' }, 1);
+  assert.equal(r.aggregate(), 'reading');
+  r.apply({ session_id: 's', hook_event_name: 'PostToolUse', tool_name: 'Read' }, 2);
+  assert.equal(r.aggregate(), 'ultrathink');
+  r.apply({ session_id: 's', hook_event_name: 'Stop' }, 3);
+  r.apply({ session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'ok' }, 4);
+  assert.equal(r.aggregate(), 'thinking');
+});
+
 test('needs-you in any session wins; pruning drops stale sessions', () => {
   const r = new Reducer();
   r.apply({ session_id: 'a', hook_event_name: 'PreToolUse', tool_name: 'Bash' }, 1000);

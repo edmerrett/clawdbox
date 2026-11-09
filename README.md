@@ -78,19 +78,29 @@ npm install && npm run build
 
 No device yet? `npm run dev` runs the daemon with a mock link so you can develop hooks and art on the previewer.
 
-## States
-| state | triggered by |
-|---|---|
-| `idle` | `SessionStart`, `Stop`, `Notification(idle_prompt)`, or 90 s of silence while busy (Esc interrupts fire no `Stop`) |
-| `thinking` | `UserPromptSubmit`, every `PostToolUse`, unknown tools |
-| `reading` | `PreToolUse` for Read, Grep, Glob, WebFetch, WebSearch, and MCP tools that look like reads |
-| `writing` | `PreToolUse` for Edit, Write, MultiEdit, NotebookEdit |
-| `running` | `PreToolUse` for Bash |
-| `needs-you` | `PermissionRequest`, `Notification(permission_prompt / elicitation_dialog)`, `PreToolUse(AskUserQuestion)` |
+## States and reactions
+The poses follow Anthropic's Claude Code sticker set. Activity states come from hook events; flashes are short
+reactions layered on top; long-idle stages appear when nothing has happened for a while.
 
-Events from subagents (`agent_id` set) are ignored so the character does not flicker. With several sessions,
-the most urgent state wins (`needs-you` > `running` > `writing` > `reading` > `thinking` > `idle`); sessions
-silent for 6 h are forgotten.
+| state | sticker | triggered by |
+|---|---|---|
+| `idle` | Clawd | `SessionStart`, `Stop`, `Notification(idle_prompt)`, or 90 s of silence while busy (Esc interrupts fire no `Stop`) |
+| `thinking` | Clawd Lightbulb | `UserPromptSubmit`, every `PostToolUse`, unknown tools |
+| `ultrathink` | Clawd Shiny | same as thinking, for the rest of a turn whose prompt contained "ultrathink" |
+| `reading` | Clawd Magnifier | `PreToolUse` for Read, Grep, Glob, WebFetch, WebSearch, and MCP tools that look like reads |
+| `writing` | (laptop, from the Clawd GIF) | `PreToolUse` for Edit, Write, MultiEdit, NotebookEdit |
+| `running` | Clawd Skateboard | `PreToolUse` for Bash |
+| `needs-you` | (question mark) | `PermissionRequest`, `Notification(permission_prompt / elicitation_dialog)`, `PreToolUse(AskUserQuestion)` |
+| `coffee` | Clawd Coffee | idle for 10 min (`--coffee-min`) |
+| `vibing` | Clawd Headphones | 10 min after coffee; then the two alternate |
+| `wave` (flash) | Clawd wave | `SessionStart` with source `startup` |
+| `done` (flash) | Clawd happy | `Stop` after a turn that ran 10 s or more |
+| `error` (flash) | Clawd Dizzy | `PostToolUseFailure` (not interrupts), `StopFailure` |
+| `heart` (flash) | clawd heart | your prompt says thanks |
+
+Flashes last 3.5 s (`--flash-ms`) and jump the hold; `needs-you` also jumps it. Events from subagents (`agent_id`
+set) are ignored so the character does not flicker. With several sessions, the most urgent state wins
+(`needs-you` > `running` > `writing` > `reading` > `thinking` > `idle`); sessions silent for 6 h are forgotten.
 
 ## Hooks
 `install-hooks` registers an **async command hook** on every relevant event: a one-second `curl` that forwards the
@@ -100,9 +110,9 @@ reports a non-blocking error for each event while the daemon is down). The gener
 [`hooks/claude-hooks.example.json`](hooks/claude-hooks.example.json). `uninstall-hooks` removes exactly what was added.
 
 ## Art
-The built-in sprites (`src/anim/clawd.ts`) are traced cell-for-cell from the Clawd-with-laptop GIF: the 12x8
-standing and crouching poses for idle, the sideways laptop-typing pose for writing, and the same body for the other
-states. `clawdbox sprites` regenerates `art/anims/*.json` from them. To replace or refine them, draw in
+The built-in sprites (`src/anim/clawd.ts`) use the 12x8 Clawd body traced from the Clawd-with-laptop GIF, posed
+after the Claude Code sticker set (magnifier, skateboard, lightbulb, shiny, coffee, headphones, happy, dizzy, wave,
+heart). `clawdbox sprites` regenerates `art/anims/*.json` from them. To replace or refine them, draw in
 Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the same `art/anims/<state>.json` files.
 [`art/README.md`](art/README.md) has the full guide and the design rules for tiny LED matrices.
 
@@ -119,6 +129,8 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 --brightness 0-100        panel brightness, applied on every (re)connect; default 100
 --hold-ms 2000            minimum time a state stays on screen
 --idle-ms 90000           silence before a busy state falls back to idle
+--coffee-min 10           minutes idle before the coffee/headphones stages start (0 disables)
+--flash-ms 3500           how long wave/done/error/heart stay up
 --port 7676               HTTP port (hooks must match)
 -v                        log every event
 ```

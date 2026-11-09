@@ -22,7 +22,8 @@ const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
   clawdbox daemon (--ble [--address UUID] [--upload | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
-                  [--anims DIR] [--port 7676] [--brightness 0-100 (default 100)] [--hold-ms 2000] [--idle-ms 90000] [-v]
+                  [--anims DIR] [--port 7676] [--brightness 0-100 (default 100)] [--hold-ms 2000] [--idle-ms 90000]
+                  [--coffee-min 10 (long-idle stages start after N min; 0 disables)] [--flash-ms 3500] [-v]
       --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
                  default streams stills at the frame rate. --upload: send the loop per change (shows a transfer screen).
                  --slots: experimental, preload all loops and switch by slot
@@ -63,6 +64,8 @@ const { values: v, positionals } = parseArgs({
     brightness: { type: 'string' },
     'hold-ms': { type: 'string' },
     'idle-ms': { type: 'string' },
+    'coffee-min': { type: 'string' },
+    'flash-ms': { type: 'string' },
     out: { type: 'string' },
     fps: { type: 'string' },
     url: { type: 'string' },
@@ -103,6 +106,9 @@ async function main() {
         brightness: v.brightness ? Number(v.brightness) : DEFAULT_CONFIG.brightness,
         minHoldMs: num(v['hold-ms'], DEFAULT_CONFIG.minHoldMs),
         idleAfterMs: num(v['idle-ms'], DEFAULT_CONFIG.idleAfterMs),
+        idleStageAfterMs: v['coffee-min'] !== undefined ? Number(v['coffee-min']) * 60_000 : DEFAULT_CONFIG.idleStageAfterMs,
+        idleStageCycleMs: v['coffee-min'] !== undefined ? Math.max(60_000, Number(v['coffee-min']) * 60_000) : DEFAULT_CONFIG.idleStageCycleMs,
+        flashMs: num(v['flash-ms'], DEFAULT_CONFIG.flashMs),
         verbose: v.verbose,
       });
       return;

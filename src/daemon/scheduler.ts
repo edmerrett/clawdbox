@@ -1,16 +1,19 @@
 /**
  * Decides what the display shows and when it is allowed to change.
  *
- * Rules (from the design interview):
  *  - Smooth: a state is held for at least `minHoldMs`, and we prefer to switch
  *    at a loop boundary of the animation currently playing.
  *  - `needs-you` bypasses the hold and switches immediately.
+ *  - Flashes (wave, done, error, heart) show immediately for `flashMs`, then the
+ *    panel returns to whatever the reducer wants.
+ *  - Long idle: after `idleStageAfterMs` with no events, idle cycles through
+ *    IDLE_STAGES (coffee, vibing, ...) every `idleStageCycleMs`.
  *  - If a non-idle state receives no events for `idleAfterMs`, fall back to idle
  *    (covers Esc interrupts, where Claude Code fires no Stop hook).
  *
  * Pure and clock-free: callers pass `now` so it is easy to test.
  */
-import { State } from '../anim/types.js';
+import { ActivityState, FlashState, IDLE_STAGES, State } from '../anim/types.js';
 
 export interface SchedulerOptions {
   minHoldMs: number;
@@ -19,52 +22,82 @@ export interface SchedulerOptions {
   loopMs: Record<State, number>;
   /** Don't wait for a loop boundary longer than this. */
   maxBoundaryWaitMs: number;
+  /** How long a flash stays up. */
+  flashMs: number;
+  /** Idle this long before the long-idle stages start (0 disables). */
+  idleStageAfterMs: number;
+  /** Then move to the next stage every this often. */
+  idleStageCycleMs: number;
 }
 
 export const DEFAULT_SCHEDULER: Omit<SchedulerOptions, 'loopMs'> = {
   minHoldMs: 2000,
   idleAfterMs: 90_000,
   maxBoundaryWaitMs: 1500,
+  flashMs: 3500,
+  idleStageAfterMs: 10 * 60_000,
+  idleStageCycleMs: 10 * 60_000,
 };
 
 export class Scheduler {
   /** What is on the panel right now. */
   current: State = 'idle';
-  /** When the current animation was (re)started. */
   private shownAt = 0;
   /** What the reducer wants. */
-  private target: State = 'idle';
-  private targetSince = 0;
+  private target: ActivityState = 'idle';
   private lastEventAt = -1;
+  private flashState: FlashState | null = null;
+  private flashUntil = 0;
 
   constructor(private readonly opts: SchedulerOptions) {}
 
   /** The reducer's aggregate changed (or an event arrived). */
-  setTarget(state: State, now: number): void {
+  setTarget(state: ActivityState, now: number): void {
     this.lastEventAt = now;
-    if (state !== this.target) {
-      this.target = state;
-      this.targetSince = now;
+    this.target = state;
+  }
+
+  /** Show a short reaction now, then go back to the target. */
+  flash(state: FlashState, now: number): void {
+    this.flashState = state;
+    this.flashUntil = now + this.opts.flashMs;
+  }
+
+  /** What the panel should be showing, before hold/boundary smoothing. */
+  desired(now: number): State {
+    if (this.flashState && now < this.flashUntil) return this.flashState;
+    if (this.target === 'idle' && this.opts.idleStageAfterMs > 0 && this.lastEventAt >= 0) {
+      const idleFor = now - this.lastEventAt;
+      if (idleFor >= this.opts.idleStageAfterMs) {
+        const i = Math.floor((idleFor - this.opts.idleStageAfterMs) / this.opts.idleStageCycleMs) % IDLE_STAGES.length;
+        return IDLE_STAGES[i];
+      }
     }
+    return this.target;
   }
 
   get pending(): State {
-    return this.target;
+    return this.desired(Date.now());
   }
 
   /**
    * Called every ~100 ms. Returns the state to switch to, or null to keep going.
-   * The caller is responsible for actually pushing the animation and then calling `shown()`.
+   * The caller pushes the animation and then calls `shown()`.
    */
   tick(now: number): State | null {
+    if (this.flashState && now >= this.flashUntil) this.flashState = null;
+
     // Idle fallback: nothing heard for a long time while busy.
     if (this.target !== 'idle' && this.lastEventAt >= 0 && now - this.lastEventAt > this.opts.idleAfterMs) {
       this.target = 'idle';
-      this.targetSince = now;
     }
-    if (this.target === this.current) return null;
 
-    if (this.target === 'needs-you') return this.target;
+    const want = this.desired(now);
+    if (want === this.current) return null;
+
+    // Urgent things jump the queue; so does returning from a flash that just ended.
+    if (want === 'needs-you' || this.flashState === want) return want;
+    if (this.isFlash(this.current)) return want;
 
     const held = now - this.shownAt;
     if (held < this.opts.minHoldMs) return null;
@@ -78,7 +111,11 @@ export class Scheduler {
       const nearBoundary = intoLoop < 120 || untilBoundary < 120;
       if (!nearBoundary && waitedPastHold < this.opts.maxBoundaryWaitMs) return null;
     }
-    return this.target;
+    return want;
+  }
+
+  private isFlash(s: State): boolean {
+    return s === 'wave' || s === 'done' || s === 'error' || s === 'heart';
   }
 
   /** Confirm that `state` is now on the panel. */
