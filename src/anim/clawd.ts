@@ -132,16 +132,19 @@ export function writing(): Anim {
     c.set(15, FEET - 3, GREY);
     if (glow) c.set(14, FEET - 3, CYAN); // screen
   };
+  // Arms alternate at a typing pace; the screen stays lit and only blinks once per cycle.
   const seq: [3 | 5, boolean][] = [
     [5, true],
     [3, true],
-    [5, false],
+    [5, true],
     [3, true],
+    [5, true],
+    [3, false],
   ];
   return {
     name: 'writing',
     frames: seq.map(([arms, glow]) =>
-      frame(130, (c) => {
+      frame(260, (c) => {
         const body = sideways(arms);
         c.blit(body, 1, top(body), PAL);
         laptop(c, glow);
@@ -154,7 +157,7 @@ export function running(): Anim {
   return {
     name: 'running',
     frames: [0, 1, 2, 3].map((i) =>
-      frame(110, (c) => {
+      frame(180, (c) => {
         const bob = i % 2 ? -1 : 0;
         const rows = legs(STAND, i % 2 === 1);
         c.blit(rows, X + 1, top(rows) + bob, PAL);
