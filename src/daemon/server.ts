@@ -86,6 +86,14 @@ export function startServer(port: number, host: string, deps: ServerDeps, log: (
       if (!res.headersSent) res.writeHead(500).end();
     }
   });
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\nport ${port} is already in use: another clawdbox daemon is probably running.`);
+      console.error(`stop it with:  pkill -f "cli.js daemon"      (or pass --port to run a second one)\n`);
+      process.exit(1);
+    }
+    throw err;
+  });
   server.listen(port, host, () => log(`listening on http://${host}:${port}`));
   return server;
 }
