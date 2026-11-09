@@ -28,6 +28,7 @@ export class Device {
   ) {
     this.log = opts.log ?? (() => {});
     link.on('closed', (err?: Error) => {
+      if (this.closed) return; // we hung up on purpose
       this.lastError = err?.message ?? 'link closed';
       this.log(`link closed${err ? `: ${err.message}` : ''}; will reconnect`);
     });

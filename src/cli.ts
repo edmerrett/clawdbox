@@ -166,8 +166,10 @@ async function main() {
       const dir = defaultAnims();
       device.prepare(dir ? loadAnimSet(dir) : clawdSprites());
       await device.show(state);
-      await new Promise((r) => setTimeout(r, 500));
+      // give the box a moment to finish parsing before we hang up
+      await new Promise((r) => setTimeout(r, 800));
       device.close();
+      console.log('done');
       return;
     }
 
