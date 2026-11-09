@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (unreleased)
+
+### Security
+- Hook events now arrive over a `0600` Unix domain socket instead of a loopback TCP port, so no other local
+  process can capture prompts or tool inputs by binding the port first. The TCP port serves only the previewer
+  and status; `--tcp-events` restores TCP hook delivery for Claude Code's native `http` hooks.
+- Every request must carry a loopback `Host` (defeats DNS rebinding); the previewer sends CSP and `nosniff`.
+- Auto-update is opt-in, follows release tags instead of `main`, installs dependencies with `--ignore-scripts`,
+  builds into a staging directory and rolls back on failure. The Python dependency is pinned.
+- Clawdbar resolves the checkout from its own launchd plist, never from the daemon's response.
+- Hook installer keeps the settings file's mode, protects and later removes its backup, refuses concurrent edits.
+- Installer: `main()` wrapper, no silent `npm install` fallback, only adopts a cwd that is the official checkout,
+  kills by exact path. Actions pinned by SHA; releases ship `SHA256SUMS`.
+
+### Fixed
+- Bridge restart backoff was bypassed; `fatal` bridge errors no longer look like a closed display.
+- Device reconnect: a failed first write drops the link; serial transport no longer leaks a descriptor.
+- `install-launchd` forwards every daemon flag; numeric flags validated once; friendlier errors for
+  `show`, `ble-scan`, `discover` and unknown options.
+- Bridge: bounded reconnects, stale state changes skipped, clean shutdown, larger stdin limit.
+- Update check compares against the newest release tag by ancestry, so local commits don't show as "behind".
+
+## 0.1.0
 
 ### Added
 - Clawd sprites for thirteen states, posed after the Claude Code sticker set, with per-state GIFs in `docs/`.

@@ -34,14 +34,15 @@ big question mark. Leave it alone for ten minutes and Clawd makes a coffee. Say 
 ## How it works
 
 ```
-Claude Code ──hook──▶ POST 127.0.0.1:7676/event ──▶ clawdbox daemon ──▶ Divoom panel
+Claude Code ──hook──▶ unix socket (0600) ──▶ clawdbox daemon ──▶ Divoom panel
                                                     ├─ reducer    hook events → per-session state, most urgent wins
                                                     ├─ scheduler  hold ≥2 s, switch at loop boundary, flashes jump the queue
                                                     └─ display    BLE bridge (newer Evo) or Bluetooth serial (original Evo)
 ```
 
 Claude Code's [hooks](https://code.claude.com/docs/en/hooks) fire on every tool call, prompt, permission request
-and stop. Each one POSTs a little JSON to a local daemon in the background and never waits for an answer.
+and stop. Each one POSTs a little JSON to the daemon's private Unix socket in the background and never waits for an
+answer.
 The daemon works out what Clawd should be doing, smooths out the flicker of rapid tool calls, and streams the
 right loop to the panel. A browser previewer shows the same thing, and a menu bar app shows whether the panel is
 connected and which state is up.
@@ -61,17 +62,19 @@ curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh 
 ```
 
 That clones to `~/Tools/clawdbox`, installs the Node and Python dependencies, builds, installs the Claude Code
-hooks, installs the daemon as a login agent with six-hourly auto-update, builds and installs the Clawdbar menu bar
-app, and then waits for Clawd to appear on the panel. Re-running it updates everything. Before you run it:
+hooks, installs the daemon as a login agent, builds and installs the Clawdbar menu bar app, and then waits for
+Clawd to appear on the panel. Re-running it updates everything. Before you run it:
 
 1. **Pair** the Timebox in System Settings → Bluetooth.
 2. Turn the **phone's Bluetooth off**: the Divoom app reconnects to the box whenever it sees it, and the box accepts
    one controller at a time.
 3. Run it from **Terminal.app or iTerm2**, which declare Bluetooth usage to macOS.
 
-Original Evo (Bluetooth Classic, see [Which Evo?](#which-evo))? Add `--mac XX:XX:XX:XX:XX:XX`.
-Other flags: `--no-hooks`, `--no-launchd`, `--no-menubar`, `--no-auto-update`, `--brightness N`, `--dir PATH`.
-`uninstall.sh` removes everything the installer set up.
+Original Evo (Bluetooth Classic, see [Which Evo?](#which-evo))? Add `--mac XX:XX:XX:XX:XX:XX`. Pass flags to the
+one-liner with `| bash -s -- --mac …`. Other flags: `--auto-update` (six-hourly updater, off by default),
+`--no-hooks`, `--no-launchd`, `--no-menubar`, `--brightness N`, `--dir PATH`. `uninstall.sh` removes everything
+the installer set up. Prefer to read before you run? `curl -fsSLO …/install.sh && less install.sh && bash install.sh`;
+tagged releases publish a `SHA256SUMS` that covers `install.sh`.
 
 ### Step by step instead
 ```bash
@@ -81,7 +84,7 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # ne
 node dist/cli.js send writing --ble            # smoke test: Clawd types on the panel (original Evo: --mac XX:…)
 node dist/cli.js daemon --ble -v               # run the daemon; previewer at http://127.0.0.1:7676
 node dist/cli.js install-hooks                 # merge hooks into ~/.claude/settings.json (backs it up first)
-node dist/cli.js install-launchd --ble --auto-update   # login agent + six-hourly updater
+node dist/cli.js install-launchd --ble         # login agent (add --auto-update for the six-hourly updater)
 menubar/install.sh                             # Clawdbar menu bar app
 ```
 `npm link` puts a `clawdbox` command on your PATH. No panel yet? `npm run dev` runs everything against a mock panel.
@@ -96,7 +99,7 @@ menubar/install.sh                             # Clawdbar menu bar app
 | `reading` | Clawd Magnifier | `PreToolUse` for Read, Grep, Glob, WebFetch, WebSearch, MCP tools that look like reads |
 | `writing` | laptop, from the Clawd GIF | `PreToolUse` for Edit, Write, MultiEdit, NotebookEdit |
 | `running` | Clawd Skateboard | `PreToolUse` for Bash |
-| `needs-you` | question mark | `PermissionRequest`, `Notification(permission_prompt / elicitation_dialog)`, `PreToolUse(AskUserQuestion)` |
+| `needs-you` | question mark | `PermissionRequest`, `Notification(permission_prompt, elicitation_dialog, elicitation_url_dialog, agent_needs_input)`, `PreToolUse(AskUserQuestion)` |
 | `coffee` | Clawd Coffee | idle for 10 min (`--coffee-min`) |
 | `vibing` | Clawd Headphones | 10 min after coffee, then the two alternate |
 | `wave` | Clawd wave | `SessionStart` with source `startup` |
@@ -136,29 +139,35 @@ tells you whether the box ever replied. Silence on every step means the newer on
 ```
 --ble                     newer Evo over BLE via bridge/clawdbox_ble.py
 --address UUID            BLE address from "clawdbox ble-scan" (default: scan and take the first Divoom/TimeBox)
---upload | --slots        BLE modes, see above
+--upload | --slots        BLE modes, see above (--select HEX for slots experiments)
 --python PATH             interpreter for the bridge (default .venv/bin/python, else python3)
---mac XX:XX:XX:XX:XX:XX   original Evo over Bluetooth serial
+--mac XX:XX:XX:XX:XX:XX   original Evo over Bluetooth serial (--channel N to pin the RFCOMM channel)
 --serial /dev/cu.NAME     original Evo via the OS serial device
+--mock                    no panel; log what would have been sent
 --anims DIR               animation directory (default art/anims)
 --brightness 0-100        panel brightness, applied on every (re)connect; default 100
 --hold-ms 2000            minimum time a state stays on screen
 --idle-ms 90000           silence before a busy state falls back to idle
 --coffee-min 10           minutes idle before the coffee/headphones stages start (0 disables)
 --flash-ms 3500           how long wave/done/error/heart stay up
---port 7676               HTTP port (hooks must match)
+--port 7676               TCP port for the previewer and status
+--socket PATH             Unix socket for hook events (default ~/Library/Application Support/clawdbox/hook.sock)
+--tcp-events              also accept hook POSTs on the TCP port (for Claude Code's http hooks; less private)
+--no-update-check         don't look for newer release tags
 -v                        log every event
 ```
 
-HTTP API (loopback only): `POST /event` (hook JSON → 204), `GET /state`, `GET /anims`,
-`POST /show/<state>` (force, for testing), `GET /` previewer.
+Hook events: `POST /event` on the Unix socket (JSON object → 204). TCP, loopback only: `GET /state`, `GET /anims`,
+`POST /show/<state>` (force, for testing), `GET /` previewer. Every request needs a loopback `Host`; POSTs with a
+foreign `Origin` are refused.
 
 ## Hooks
 
-`install-hooks` registers an **async command hook** on every relevant event: a one-second `curl` that forwards
-the hook JSON to the daemon and always exits 0. Claude Code never waits for it, and a stopped daemon costs nothing.
-`install-hooks --http` uses Claude Code's native `http` hook type instead (no shell, but Claude Code awaits it
-and reports a non-blocking error for each event while the daemon is down). See
+`install-hooks` registers an **async command hook** on every relevant event: a one-second `/usr/bin/curl` that
+forwards the hook JSON to the daemon's `0600` Unix socket and always exits 0. Claude Code never waits for it, a
+stopped daemon costs nothing, and no other local process can receive the payload. `install-hooks --http` uses
+Claude Code's native `http` hook type over TCP instead (no shell, but Claude Code awaits it, reports a non-blocking
+error per event while the daemon is down, and the port could be squatted; run the daemon with `--tcp-events`). See
 [`hooks/claude-hooks.example.json`](hooks/claude-hooks.example.json). `uninstall-hooks` removes exactly what was added.
 
 Prompt text is only ever pattern-matched in memory (for "thanks" and "ultrathink"). It is not logged or stored.

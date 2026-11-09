@@ -13,7 +13,7 @@
  *
  * Pure and clock-free: callers pass `now` so it is easy to test.
  */
-import { ActivityState, FLASH_STATES, FlashState, IDLE_STAGES, State } from '../anim/types.js';
+import { ActivityState, FlashState, IDLE_STAGES, State, isFlashState } from '../anim/types.js';
 
 export interface SchedulerOptions {
   minHoldMs: number;
@@ -31,6 +31,9 @@ export interface SchedulerOptions {
   /** Called when a busy target falls back to idle because events stopped (Esc interrupt). */
   onIdleFallback?: (now: number) => void;
 }
+
+/** How close to a loop boundary counts as "at" it. */
+const BOUNDARY_WINDOW_MS = 120;
 
 export const DEFAULT_SCHEDULER: Omit<SchedulerOptions, 'loopMs'> = {
   minHoldMs: 2000,
@@ -111,14 +114,14 @@ export class Scheduler {
       const intoLoop = held % loop;
       const untilBoundary = loop - intoLoop;
       const waitedPastHold = held - this.opts.minHoldMs;
-      const nearBoundary = intoLoop < 120 || untilBoundary < 120;
+      const nearBoundary = intoLoop < BOUNDARY_WINDOW_MS || untilBoundary < BOUNDARY_WINDOW_MS;
       if (!nearBoundary && waitedPastHold < this.opts.maxBoundaryWaitMs) return null;
     }
     return want;
   }
 
   private isFlash(s: State): boolean {
-    return (FLASH_STATES as readonly string[]).includes(s);
+    return isFlashState(s);
   }
 
   /** Confirm that `state` is now on the panel. */

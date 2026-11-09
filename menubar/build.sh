@@ -12,7 +12,8 @@ TARGET="${CLAWDBAR_TARGET:-${ARCH}-apple-macos12.0}"
 echo "compiling for ${TARGET}..."
 swiftc -O -target "$TARGET" -framework Cocoa -o "$APP/Contents/MacOS/Clawdbar" ClawdbarApp.swift
 cp Info.plist "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" "$APP/Contents/Info.plist" >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" "$APP/Contents/Info.plist" >/dev/null 2>&1 \
+  || /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 12.0" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true
 echo "built $APP"

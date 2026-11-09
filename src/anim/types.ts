@@ -59,6 +59,15 @@ export const IDLE_STAGES = ['coffee', 'vibing'] as const;
 export function isState(s: string): s is State {
   return (STATES as readonly string[]).includes(s);
 }
+export function isActivityState(s: string): s is ActivityState {
+  return (ACTIVITY_STATES as readonly string[]).includes(s);
+}
+export function isFlashState(s: string): s is FlashState {
+  return (FLASH_STATES as readonly string[]).includes(s);
+}
+export function isIdleStage(s: string): s is (typeof IDLE_STAGES)[number] {
+  return (IDLE_STAGES as readonly string[]).includes(s);
+}
 
 /** Higher wins when several sessions disagree. */
 export const PRIORITY: Record<ActivityState, number> = {

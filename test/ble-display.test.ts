@@ -20,29 +20,30 @@ function make(env: Record<string, string> = {}) {
   return { d, logs };
 }
 
-test('shows are answered by id and connect-retry status is not mistaken for a reply', async () => {
+test('shows are answered by id and connect-retry status is not mistaken for a reply', async (t) => {
   const { d, logs } = make();
+  t.after(() => d.close());
   await d.show('writing');
   assert.equal(d.pushes, 1);
   assert.ok(d.connected);
   assert.ok(logs.some((l) => l.includes('bridge error: connect failed')));
   assert.ok(logs.some((l) => l.includes('showing writing')));
-  d.close();
 });
 
-test('one failed show does not poison later shows', async () => {
+test('one failed show does not poison later shows', async (t) => {
   const { d } = make({ FAKE_FAIL_FIRST: '1' });
+  t.after(() => d.close());
   await assert.rejects(d.show('idle'), /simulated/);
   await d.show('reading');
   await d.show('running');
   assert.equal(d.pushes, 2);
-  d.close();
 });
 
-test('a show queued before the bridge connects waits for it', async () => {
-  const { d } = make({ FAKE_SLOW_CONNECT: '400' });
-  const t0 = Date.now();
+test('a show queued before the bridge connects waits for the connection', async (t) => {
+  const { d, logs } = make({ FAKE_SLOW_CONNECT: '400' });
+  t.after(() => d.close());
   await d.show('idle');
-  assert.ok(Date.now() - t0 >= 350);
-  d.close();
+  const connectedAt = logs.findIndex((l) => l.includes('bridge connected'));
+  const shownAt = logs.findIndex((l) => l.includes('showing idle'));
+  assert.ok(connectedAt >= 0 && shownAt > connectedAt, 'connected must be logged before showing');
 });

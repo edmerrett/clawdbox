@@ -163,11 +163,18 @@ export class Reducer {
     return rec?.ultra ? 'ultrathink' : 'thinking';
   }
 
-  /** Drop sessions that have been silent for longer than maxAgeMs. */
-  prune(now: number, maxAgeMs: number): string[] {
+  /** Drop sessions silent for longer than maxAgeMs, then the oldest beyond `max`. */
+  prune(now: number, maxAgeMs: number, max = Infinity): string[] {
     const dropped: string[] = [];
     for (const [id, rec] of this.sessions) {
       if (now - rec.updatedAt > maxAgeMs) {
+        this.sessions.delete(id);
+        dropped.push(id);
+      }
+    }
+    if (this.sessions.size > max) {
+      const oldest = [...this.sessions].sort((a, b) => a[1].updatedAt - b[1].updatedAt).slice(0, this.sessions.size - max);
+      for (const [id] of oldest) {
         this.sessions.delete(id);
         dropped.push(id);
       }

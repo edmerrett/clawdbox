@@ -36,6 +36,7 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 try:
@@ -50,8 +51,19 @@ except ImportError as e:  # pragma: no cover
 Frame = dict[str, Any]
 Pixels = list[tuple[int, int, int]]
 
+
+class NotConnected(RuntimeError):
+    """Raised by ops that need the panel while the link is down."""
+
+
 # Errors that mean "the BLE link is unhappy; reconnect and try again".
-LINK_ERRORS = (BleakError, OSError, RuntimeError, asyncio.TimeoutError, AttributeError)
+LINK_ERRORS = (BleakError, OSError, NotConnected, asyncio.TimeoutError)
+
+# A preload message carries every frame of every animation; give stdin room for it.
+STDIN_LIMIT = 16 * 1024 * 1024
+# How long an op may wait for the link to come back before it fails (the daemon
+# retries on its own schedule; holding the lock forever would replay stale states).
+RECONNECT_BUDGET_S = 45
 
 
 def emit(**ev: Any) -> None:
@@ -78,6 +90,7 @@ class Bridge:
         self.stream_task: asyncio.Task[None] | None = None
         self.slot_of: dict[str, int] = {}
         self.preloaded: list[tuple[str, list[Frame]]] = []
+        self.latest_anim_id: int | None = None
 
     # ---------- connection ----------
 
@@ -128,25 +141,25 @@ class Bridge:
             for name, frames in self.preloaded:
                 await self._upload_slot(name, frames)
 
-    async def with_retry(self, fn) -> None:
-        """Run fn(); on a link error reconnect once and run it again."""
+    async def with_retry(self, fn: Callable[[], Awaitable[Any]]) -> None:
+        """Run fn(); on a link error reconnect (bounded) and run it again."""
         try:
             await fn()
         except LINK_ERRORS as e:
             log(f"BLE error ({type(e).__name__}: {e}); reconnecting")
-            await self.reconnect()
+            await asyncio.wait_for(self.reconnect(), timeout=RECONNECT_BUDGET_S)
             await fn()
 
     def require_client(self) -> DivoomClient:
         if self.client is None:
-            raise RuntimeError("not connected")
+            raise NotConnected("not connected")
         return self.client
 
     # ---------- encoding ----------
 
     @staticmethod
     def decode(frames: list[Frame]) -> tuple[list[Pixels], list[int]]:
-        pixels = [[tuple(p) for p in f["pixels"]] for f in frames]
+        pixels: list[Pixels] = [[(int(p[0]), int(p[1]), int(p[2])) for p in f["pixels"]] for f in frames]
         times = [max(50, int(f.get("ms", 100))) for f in frames]
         return pixels, times
 
@@ -176,20 +189,21 @@ class Bridge:
         pixels, times = self.decode(frames)
         await self.stop_stream()
         if self.mode == "stream" or len(frames) == 1:
-            if len(frames) == 1:
-                await self.with_retry(lambda: self.require_client().static_image(pixels[0]))
-            else:
-                self.stream_task = asyncio.create_task(self.stream(pixels, times))
+            # land the first frame now (so "shown" means shown), then keep cycling in the background
+            await self.with_retry(lambda: self.require_client().static_image(pixels[0]))
+            if len(frames) > 1:
+                self.stream_task = asyncio.create_task(self.stream(pixels, times, start=1))
             return {"mode": "stream"}
         t0 = time.time()
         chunks = self.encode_chunks(self.slot, frames)
         await self.with_retry(lambda: self.require_client().upload_animation(self.slot, chunks))
         return {"mode": "upload", "seconds": round(time.time() - t0, 2)}
 
-    async def stream(self, pixels: list[Pixels], times: list[int]) -> None:
+    async def stream(self, pixels: list[Pixels], times: list[int], start: int = 0) -> None:
         """Push stills at the frame timing until cancelled. Each write takes the op lock so
         it never races a reconnect started by another op."""
-        i = 0
+        i = start
+        await asyncio.sleep(max(times[(i - 1) % len(times)], 250) / 1000)
         while True:
             async with self.lock:
                 try:
@@ -237,10 +251,16 @@ class Bridge:
         if op == "ping":
             emit(ev="pong", id=rid, re=op, connected=self.connected.is_set())
             return
+        if op in ("anim", "play") and isinstance(rid, int):
+            self.latest_anim_id = rid
         try:
             # ops that touch the panel wait for the link (the daemon's timeout bounds this)
             await self.connected.wait()
             async with self.lock:
+                if op in ("anim", "play") and isinstance(rid, int) and rid != self.latest_anim_id:
+                    # a newer state arrived while we waited; don't flip the panel through stale ones
+                    emit(ev="shown", id=rid, re=op, name=msg.get("name"), skipped=True)
+                    return
                 if op == "anim":
                     result = await self.show_anim(str(msg.get("name", "?")), msg["frames"])
                     emit(ev="shown", id=rid, re=op, name=msg.get("name"), **result)
@@ -264,7 +284,7 @@ class Bridge:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stopping.set)
         connect_task = asyncio.create_task(self.connect())
-        reader = asyncio.StreamReader()
+        reader = asyncio.StreamReader(limit=STDIN_LIMIT)
         await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
         stop_wait = asyncio.create_task(self.stopping.wait())
         pending_ops: set[asyncio.Task[None]] = set()
@@ -275,7 +295,11 @@ class Bridge:
                 if line_task not in done:
                     line_task.cancel()
                     break
-                line = line_task.result()
+                try:
+                    line = line_task.result()
+                except ValueError:
+                    emit(ev="error", message=f"message longer than {STDIN_LIMIT} bytes; dropped")
+                    continue
                 if not line:
                     break  # stdin closed: the daemon is gone
                 try:
@@ -291,9 +315,11 @@ class Bridge:
                 task.add_done_callback(pending_ops.discard)
         finally:
             self.stopping.set()
+            stop_wait.cancel()
             connect_task.cancel()
-            for t in pending_ops:
+            for t in list(pending_ops):
                 t.cancel()
+            await asyncio.gather(connect_task, stop_wait, *pending_ops, return_exceptions=True)
             await self.stop_stream()
             await self._drop_client()
             log("bridge stopped")
@@ -307,15 +333,16 @@ async def scan_only() -> None:
         emit(ev="error", message="no Divoom BLE device found")
 
 
-def watch_parent() -> None:
-    """Exit when the daemon that spawned us is gone, so we never keep the box's only
-    BLE connection hostage after a crash."""
+def watch_parent(loop: asyncio.AbstractEventLoop, stopping: asyncio.Event) -> None:
+    """Stop when the daemon that spawned us is gone, so we never keep the box's only
+    BLE connection hostage after a crash. Asks the loop to shut down cleanly (which
+    disconnects the panel) and hard-exits only if that takes too long."""
     parent = os.getppid()
-    while True:
+    while os.getppid() == parent:
         time.sleep(1)
-        if os.getppid() != parent:
-            emit(ev="log", message="parent gone; exiting")
-            os._exit(0)
+    loop.call_soon_threadsafe(stopping.set)
+    time.sleep(5)
+    os._exit(0)
 
 
 def main() -> int:
@@ -336,9 +363,14 @@ def main() -> int:
     if a.scan:
         asyncio.run(scan_only())
         return 0
-    threading.Thread(target=watch_parent, daemon=True).start()
+    bridge = Bridge(a.address, a.mode, a.slot, a.brightness, select)
+
+    async def run_with_watchdog() -> None:
+        threading.Thread(target=watch_parent, args=(asyncio.get_running_loop(), bridge.stopping), daemon=True).start()
+        await bridge.run()
+
     try:
-        asyncio.run(Bridge(a.address, a.mode, a.slot, a.brightness, select).run())
+        asyncio.run(run_with_watchdog())
     except KeyboardInterrupt:
         return 0
     except Exception:  # noqa: BLE001 - last resort: make the crash visible to the daemon's err log

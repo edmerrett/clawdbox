@@ -14,6 +14,13 @@ import { Display } from './display.js';
 
 export type BleMode = 'upload' | 'stream' | 'slots';
 
+const RESTART_MIN_MS = 2000;
+const RESTART_MAX_MS = 30_000;
+const PRELOAD_TIMEOUT_MS = 180_000;
+const REQUEST_TIMEOUT_MS = 60_000;
+const CONNECT_WAIT_MS = 150_000;
+const SIGKILL_AFTER_MS = 3000;
+
 export interface BleOptions {
   address?: string;
   mode?: BleMode;
@@ -27,6 +34,8 @@ export interface BleOptions {
   env?: Record<string, string>;
   repoRoot: string;
   log?: (m: string) => void;
+  /** Chatty details (prepared sizes); defaults to silent. */
+  debug?: (m: string) => void;
   /** Per-request timeout. Shows wait for the link first, so this only covers the op itself. */
   requestTimeoutMs?: number;
 }
@@ -71,26 +80,31 @@ export class BleDisplay implements Display {
   /** Serialises shows. Always settles fulfilled so one failure cannot poison later shows. */
   private queue: Promise<void> = Promise.resolve();
   private closed = false;
-  private restartMs = 2000;
+  /** The bridge said it can never work (deps missing); distinct from the user closing the display. */
+  private fatal = false;
+  private restartMs = RESTART_MIN_MS;
+  private restartTimer: NodeJS.Timeout | null = null;
   private everConnected = false;
   private preloading = false;
   private preloaded = false;
   private readonly log: (m: string) => void;
+  private readonly debug: (m: string) => void;
   private readonly requestTimeoutMs: number;
 
   constructor(private readonly opts: BleOptions) {
     this.log = opts.log ?? (() => {});
-    this.requestTimeoutMs = opts.requestTimeoutMs ?? 60_000;
+    this.debug = opts.debug ?? (() => {});
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.label = `ble ${opts.address ?? '(scan)'} via ${opts.mode ?? 'stream'}`;
   }
 
   prepare(anims: Record<State, Anim>): void {
     this.anims = anims;
-    for (const [s, a] of Object.entries(anims)) this.log(`prepared ${s}: ${a.frames.length} frames`);
+    for (const [s, a] of Object.entries(anims)) this.debug(`prepared ${s}: ${a.frames.length} frames`);
   }
 
   private start(): void {
-    if (this.proc || this.closed) return;
+    if (this.proc || this.closed || this.fatal || this.restartTimer) return;
     const python = resolvePython(this.opts.repoRoot, this.opts.python);
     const script = this.opts.bridgeScript ?? join(this.opts.repoRoot, 'bridge', 'clawdbox_ble.py');
     const args = [script, '--mode', this.opts.mode ?? 'stream'];
@@ -106,15 +120,21 @@ export class BleDisplay implements Display {
       this.lastError = err.message;
       this.log(`bridge could not start: ${err.message}`);
     });
+    proc.stdin.on('error', (err) => this.debug(`bridge stdin: ${err.message}`));
     proc.on('exit', (code, signal) => {
       this.proc = null;
       this.connected = false;
       this.preloaded = false;
       this.failAll(new Error(`bridge exited (${code ?? signal})`));
-      if (this.closed) return;
+      if (this.closed || this.fatal) return;
       this.log(`bridge exited with code ${code ?? signal}; restarting in ${this.restartMs / 1000}s`);
-      setTimeout(() => this.start(), this.restartMs).unref();
-      this.restartMs = Math.min(this.restartMs * 2, 30_000);
+      // a pending request must not respawn early: start() is a no-op while this timer runs
+      this.restartTimer = setTimeout(() => {
+        this.restartTimer = null;
+        this.start();
+      }, this.restartMs);
+      this.restartTimer.unref();
+      this.restartMs = Math.min(this.restartMs * 2, RESTART_MAX_MS);
     });
   }
 
@@ -143,9 +163,9 @@ export class BleDisplay implements Display {
         this.connected = true;
         this.everConnected = true;
         this.lastError = null;
-        this.restartMs = 2000;
+        this.restartMs = RESTART_MIN_MS;
         this.log(`bridge connected to ${ev.address}`);
-        if (this.opts.mode === 'slots') this.preloadSlots();
+        if (this.opts.mode === 'slots') this.preloadSlots(wasDrop);
         else if (wasDrop) this.onReconnect?.();
         break;
       }
@@ -154,7 +174,10 @@ export class BleDisplay implements Display {
           // status (connect retry etc.), not a reply
           this.lastError = ev.message ?? 'error';
           this.log(`bridge error: ${ev.message}`);
-          if (ev.fatal) this.closed = true;
+          if (ev.fatal) {
+            this.fatal = true;
+            this.log('the bridge cannot run until its dependencies are installed; restart the daemon afterwards');
+          }
         }
         break;
     }
@@ -169,15 +192,15 @@ export class BleDisplay implements Display {
     }
   }
 
-  private preloadSlots(): void {
+  private preloadSlots(wasDrop: boolean): void {
     if (!this.anims || this.preloading) return;
     this.preloading = true;
     const anims = Object.entries(this.anims).map(([name, a]) => ({ name, frames: a.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) }));
-    this.request({ op: 'preload', anims }, 180_000)
+    this.request({ op: 'preload', anims }, PRELOAD_TIMEOUT_MS)
       .then((r) => {
         this.preloaded = true;
         this.log(`preloaded slots: ${JSON.stringify(r.slots)}`);
-        this.onReconnect?.();
+        if (wasDrop) this.onReconnect?.();
       })
       .catch((e) => this.log(`preload failed: ${(e as Error).message}`))
       .finally(() => {
@@ -188,7 +211,7 @@ export class BleDisplay implements Display {
   private request(msg: Record<string, unknown>, timeoutMs = this.requestTimeoutMs): Promise<BridgeEvent> {
     this.start();
     return new Promise((resolve, reject) => {
-      if (!this.proc) return reject(new Error(this.lastError ?? 'bridge not running'));
+      if (!this.proc) return reject(new Error(this.lastError ?? (this.restartTimer ? 'bridge restarting' : 'bridge not running')));
       const id = this.nextId++;
       const timer = setTimeout(() => {
         this.waiters.delete(id);
@@ -229,15 +252,15 @@ export class BleDisplay implements Display {
   }
 
   /** Make sure the bridge is up and connected (waits for the first connected event). */
-  ensureConnected(timeoutMs = 90_000): Promise<void> {
+  ensureConnected(timeoutMs = CONNECT_WAIT_MS): Promise<void> {
     return this.waitFor(() => this.connected, 'bridge did not connect in time', timeoutMs);
   }
 
-  private async waitFor(cond: () => boolean, why: string, timeoutMs = 150_000): Promise<void> {
+  private async waitFor(cond: () => boolean, why: string, timeoutMs = CONNECT_WAIT_MS): Promise<void> {
     this.start();
     const t0 = Date.now();
     while (!cond()) {
-      if (this.closed) throw new Error(this.lastError ?? 'bridge closed');
+      if (this.closed || this.fatal) throw new Error(this.lastError ?? 'bridge closed');
       if (Date.now() - t0 > timeoutMs) throw new Error(why);
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -246,6 +269,7 @@ export class BleDisplay implements Display {
   /** Ask the bridge to stop; it disconnects the panel cleanly on SIGTERM. SIGKILL only if it hangs. */
   close(): void {
     this.closed = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
     const proc = this.proc;
     if (!proc) return;
     this.failAll(new Error('display closed'));
@@ -261,6 +285,6 @@ export class BleDisplay implements Display {
       } catch {
         /* already gone */
       }
-    }, 3000).unref();
+    }, SIGKILL_AFTER_MS).unref();
   }
 }

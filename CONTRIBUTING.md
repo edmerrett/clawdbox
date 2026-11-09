@@ -33,7 +33,7 @@ curl -X POST -H 'Content-Type: application/json' \
 
 ## Art rules for LEDs
 Black background, saturated colours, nothing finer than 2 px, no frame shorter than 150 ms, same feet row in every
-pose. `npm test` enforces the last two.
+pose. `npm test` enforces the frame-time rule.
 
 ## Supporting another Divoom device
 Open an issue with: the Bluetooth name(s) it advertises, whether it pairs as a speaker, and the output of

@@ -31,8 +31,27 @@ struct DaemonState: Decodable {
     let sessions: [String: Session]
     let device: Device
     let uptimeSec: Int
-    let repoRoot: String?
     let update: Update?
+}
+
+/// The clawdbox checkout, read from the daemon's launchd plist (WorkingDirectory) that
+/// `install-launchd` wrote. Never taken from the network: a process squatting the daemon's
+/// port must not be able to point "Install Update…" at a script of its choosing.
+func installedCheckout() -> URL? {
+    let plist = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/LaunchAgents/\(launchdLabel).plist")
+    guard let data = try? Data(contentsOf: plist),
+          let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+          let dir = dict["WorkingDirectory"] as? String else { return nil }
+    let url = URL(fileURLWithPath: dir).standardizedFileURL
+    let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+    guard url.path.hasPrefix(home + "/"),
+          let pkg = try? Data(contentsOf: url.appendingPathComponent("package.json")),
+          let json = try? JSONSerialization.jsonObject(with: pkg) as? [String: Any],
+          json["name"] as? String == "clawdbox",
+          FileManager.default.isExecutableFile(atPath: url.appendingPathComponent("scripts/update.sh").path)
+    else { return nil }
+    return url
 }
 
 let daemonBase = URL(string: ProcessInfo.processInfo.environment["CLAWDBOX_URL"] ?? "http://127.0.0.1:7676")!
@@ -51,7 +70,7 @@ struct Rendering {
 
     static func offline() -> Rendering {
         Rendering(title: " offline", dimmed: true, connection: "Daemon not running",
-                  showing: "Start it with: clawdbox daemon --ble", transport: "", sessions: "", update: nil)
+                  showing: "Use Restart Daemon below, or: clawdbox daemon --ble", transport: "", sessions: "", update: nil)
     }
 
     init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String, update: String?) {
@@ -142,7 +161,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let sessionsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let installUpdateItem = NSMenuItem(title: "Install Update…", action: #selector(installUpdate), keyEquivalent: "u")
-    private var repoRoot: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -223,10 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showingItem.title = r.showing
         transportItem.title = r.transport
         sessionsItem.title = r.sessions
-        repoRoot = lastState?.repoRoot
         updateItem.title = r.update ?? ""
         updateItem.isHidden = r.update == nil
-        installUpdateItem.isHidden = r.update == nil || repoRoot == nil
+        installUpdateItem.isHidden = r.update == nil || installedCheckout() == nil
     }
 
     // MARK: actions
@@ -252,13 +269,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? task.run()
     }
 
-    /// Runs scripts/update.sh in the daemon's checkout. It pulls, rebuilds, restarts the
+    /// Runs scripts/update.sh in the installed checkout (located via our own launchd plist,
+    /// never via the daemon). It updates to the newest release, rebuilds, restarts the
     /// daemon and relaunches this app if the menu bar sources changed.
     @objc private func installUpdate() {
-        guard let root = repoRoot else { return }
+        guard let root = installedCheckout() else { return }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = [root + "/scripts/update.sh"]
+        task.arguments = [root.appendingPathComponent("scripts/update.sh").path]
         let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
         try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
         let log = logDir.appendingPathComponent("update.log")

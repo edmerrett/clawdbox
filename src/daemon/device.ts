@@ -10,6 +10,8 @@ import { Display } from './display.js';
 export interface DeviceOptions {
   brightness?: number;
   log?: (msg: string) => void;
+  /** Chatty details (prepared sizes, raw replies); defaults to silent. */
+  debug?: (msg: string) => void;
 }
 
 export class Device implements Display {
@@ -22,6 +24,7 @@ export class Device implements Display {
   private backoffMs = 1000;
   private closed = false;
   private readonly log: (msg: string) => void;
+  private readonly debug: (msg: string) => void;
   /** Incremented on every successful push; lets the UI show device status. */
   pushes = 0;
   onReconnect?: () => void;
@@ -39,10 +42,11 @@ export class Device implements Display {
     private readonly opts: DeviceOptions = {},
   ) {
     this.log = opts.log ?? (() => {});
+    this.debug = opts.debug ?? (() => {});
     link.on('data', (buf: Buffer) => {
       if (!buf.length) return; // the library emits an empty buffer on close
       this.replies++;
-      this.log(`reply: ${buf.toString('hex')}`);
+      this.debug(`reply: ${buf.toString('hex')}`);
     });
     link.on('closed', (err?: Error) => {
       if (this.closed) return; // we hung up on purpose
@@ -57,7 +61,7 @@ export class Device implements Display {
       const msgs = encodeAnimation(anim);
       this.encoded.set(state, msgs);
       const bytes = msgs.reduce((n, m) => n + m.length, 0);
-      this.log(`prepared ${state}: ${anim.frames.length} frames, ${msgs.length} msgs, ${bytes} bytes`);
+      this.debug(`prepared ${state}: ${anim.frames.length} frames, ${msgs.length} msgs, ${bytes} bytes`);
     }
   }
 
@@ -73,13 +77,25 @@ export class Device implements Display {
         try {
           this.log(`connecting to ${this.link.label}...`);
           await this.link.connect();
+          if (this.closed) {
+            this.link.close();
+            return;
+          }
           this.backoffMs = 1000;
           this.lastError = null;
           this.log('connected');
-          await sleep(this.settleMs);
-          if (this.opts.brightness !== undefined) await this.rawWrite([encodeBrightness(this.opts.brightness)]);
-          if (this.everConnected) this.onReconnect?.();
+          const wasDrop = this.everConnected;
           this.everConnected = true;
+          await sleep(this.settleMs);
+          try {
+            if (this.opts.brightness !== undefined) await this.rawWrite([encodeBrightness(this.opts.brightness)]);
+          } catch (e) {
+            // a failed first write means the link is not really usable: drop it and retry
+            this.log(`first write failed (${(e as Error).message}); reconnecting`);
+            this.link.close();
+            continue;
+          }
+          if (wasDrop) this.onReconnect?.();
         } catch (e) {
           this.lastError = (e as Error).message;
           this.log(`connect failed: ${this.lastError}; retry in ${this.backoffMs / 1000}s`);

@@ -2,37 +2,42 @@
 # clawdbox one-shot installer for macOS.
 #
 #   curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh | bash
-#   # or, from a checkout:
-#   ./install.sh
+#   curl -fsSL .../install.sh | bash -s -- --mac XX:XX:XX:XX:XX:XX     # original Evo
+#   ./install.sh                                                      # from a checkout
 #
 # Does everything: clone or update the checkout, install Node and Python deps, build,
-# install the Claude Code hooks, install the daemon as a login agent (with auto-update),
-# install the Clawdbar menu bar app, then wait for Clawd to appear on the panel.
-# Re-running it updates an existing install. Options:
+# install the Claude Code hooks, install the daemon as a login agent, install the Clawdbar
+# menu bar app, then wait for Clawd to appear on the panel. Re-running it updates an
+# existing install. Options:
 #
 #   --dir PATH        where to keep the checkout (default ~/Tools/clawdbox, or the current checkout)
 #   --mac XX:XX:…     original Timebox Evo over Bluetooth Classic (default is --ble, the newer Evo)
+#   --auto-update     also install a six-hourly updater that follows release tags (off by default)
 #   --no-hooks        don't touch ~/.claude/settings.json
 #   --no-launchd      don't install the login agent (you run the daemon yourself)
 #   --no-menubar      skip the menu bar app
-#   --no-auto-update  install the daemon agent without the six-hourly updater
 #   --brightness N    panel brightness 0-100 (default 100)
+#
+# The whole script is a function so a truncated download cannot run half of it.
+main() {
 set -euo pipefail
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 REPO_URL="https://github.com/edmerrett/clawdbox"
-DIR=""; TRANSPORT=(--ble); HOOKS=1; LAUNCHD=1; MENUBAR=1; AUTOUPDATE=1; BRIGHTNESS=""
+DIR=""; TRANSPORT=(--ble); HOOKS=1; LAUNCHD=1; MENUBAR=1; AUTOUPDATE=0; BRIGHTNESS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) DIR="$2"; shift 2;;
     --mac) TRANSPORT=(--mac "$2"); shift 2;;
     --ble) TRANSPORT=(--ble); shift;;
+    --auto-update) AUTOUPDATE=1; shift;;
+    --no-auto-update) AUTOUPDATE=0; shift;;
     --no-hooks) HOOKS=0; shift;;
     --no-launchd) LAUNCHD=0; shift;;
     --no-menubar) MENUBAR=0; shift;;
-    --no-auto-update) AUTOUPDATE=0; shift;;
     --brightness) BRIGHTNESS="$2"; shift 2;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
-    *) echo "unknown option: $1 (try --help)"; exit 2;;
+    -h|--help) usage; return 0;;
+    *) echo "unknown option: $1 (try --help)" >&2; return 2;;
   esac
 done
 
@@ -61,14 +66,21 @@ fi
 echo "node $(node -v), $(python3 -V 2>/dev/null || echo 'no python'), $(xcrun -f swiftc >/dev/null 2>&1 && echo swiftc ok || echo 'no swiftc')"
 
 # ---------- checkout ----------
+# The current directory is used only when it is a checkout of the official repository, so
+# running the one-liner inside some other project (or a fork) cannot hijack the install.
 if [ -z "$DIR" ]; then
-  if [ -f "./package.json" ] && grep -q '"name": "clawdbox"' ./package.json 2>/dev/null; then DIR="$(pwd)"; else DIR="$HOME/Tools/clawdbox"; fi
+  if [ -d .git ] && [ "$(git remote get-url origin 2>/dev/null)" = "$REPO_URL" ] || [ "$(git remote get-url origin 2>/dev/null)" = "$REPO_URL.git" ]; then
+    DIR="$(pwd)"
+  else
+    DIR="$HOME/Tools/clawdbox"
+  fi
 fi
 step "checkout at $DIR"
 if [ -d "$DIR/.git" ]; then
-  git -C "$DIR" fetch --quiet origin main
+  git -C "$DIR" fetch --quiet --tags origin main
   if [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; then
-    echo "local changes present; leaving the checkout as it is"
+    echo "local changes present; NOT updating the checkout (this also blocks 'clawdbox update'):"
+    git -C "$DIR" status --porcelain --untracked-files=no | sed 's/^/    /'
   else
     git -C "$DIR" pull --ff-only --quiet origin main && echo "updated to $(git -C "$DIR" rev-parse --short HEAD)"
   fi
@@ -78,23 +90,33 @@ else
   echo "cloned $(git -C "$DIR" rev-parse --short HEAD)"
 fi
 cd "$DIR"
+echo "installing commit $(git rev-parse --short HEAD) ($(git log -1 --format=%cd --date=short))"
+
+# ---------- stop what we are about to replace ----------
+if [ "$LAUNCHD" = 1 ]; then
+  step "stopping the running daemon"
+  launchctl bootout "gui/$(id -u)/com.clawdbox.daemon" 2>/dev/null || true
+  launchctl bootout "gui/$(id -u)/com.clawdbox.update" 2>/dev/null || true
+  pkill -f "$DIR/dist/cli.js daemon" 2>/dev/null || true
+  pkill -f "$DIR/bridge/clawdbox_ble.py" 2>/dev/null || true
+  sleep 1
+fi
 
 # ---------- build ----------
 step "installing Node dependencies and building"
-npm ci --no-audit --no-fund --silent 2>/dev/null || npm install --no-audit --no-fund --silent
+# --ignore-scripts: no dependency install scripts run from a curl|bash flow. The one native
+# optional module (Bluetooth Classic, original Evo only) is rebuilt explicitly when needed.
+npm ci --no-audit --no-fund --silent --ignore-scripts
+if [ "${TRANSPORT[0]}" = "--mac" ]; then
+  npm rebuild bluetooth-serial-port --silent || die "bluetooth-serial-port failed to build; install the Xcode command line tools and re-run"
+fi
 npm run build --silent
+git rev-parse HEAD > dist/.built-commit
 if [ "${TRANSPORT[0]}" = "--ble" ]; then
   step "installing the Python BLE bridge dependency"
   [ -x .venv/bin/pip ] || python3 -m venv .venv
   .venv/bin/pip install -q -r bridge/requirements.txt
 fi
-
-# ---------- stop anything already running ----------
-step "stopping any running clawdbox daemon or bridge"
-launchctl bootout "gui/$(id -u)/com.clawdbox.daemon" 2>/dev/null || true
-pkill -f "cli.js daemon" 2>/dev/null || true
-pkill -f clawdbox_ble.py 2>/dev/null || true
-sleep 1
 
 # ---------- hooks ----------
 if [ "$HOOKS" = 1 ]; then
@@ -104,10 +126,10 @@ fi
 
 # ---------- daemon ----------
 ARGS=("${TRANSPORT[@]}")
-[ -n "$BRIGHTNESS" ] && ARGS+=(--brightness "$BRIGHTNESS")
+if [ -n "$BRIGHTNESS" ]; then ARGS+=(--brightness "$BRIGHTNESS"); fi
 if [ "$LAUNCHD" = 1 ]; then
   step "installing the daemon as a login agent"
-  [ "$AUTOUPDATE" = 1 ] && ARGS+=(--auto-update)
+  if [ "$AUTOUPDATE" = 1 ]; then ARGS+=(--auto-update); fi
   node dist/cli.js install-launchd "${ARGS[@]}"
 else
   echo "skipping the login agent; run:  node dist/cli.js daemon ${ARGS[*]} -v"
@@ -121,7 +143,7 @@ fi
 
 # ---------- wait for Clawd ----------
 if [ "$LAUNCHD" = 1 ]; then
-  step "waiting for the daemon to reach the panel (phone Bluetooth off, Divoom app closed)"
+  step "waiting up to 45 s for the daemon to reach the panel (phone Bluetooth off, Divoom app closed)"
   ok=0
   for i in $(seq 1 45); do
     s=$(curl -sf http://127.0.0.1:7676/state 2>/dev/null || true)
@@ -152,3 +174,25 @@ echo "  logs:        ~/Library/Logs/clawdbox/"
 echo "  update:      re-run this script, or 'node dist/cli.js update'$( [ "$AUTOUPDATE" = 1 ] && [ "$LAUNCHD" = 1 ] && echo ' (also automatic every 6 h)')"
 echo "  uninstall:   $DIR/uninstall.sh"
 echo "Start a Claude Code session and watch Clawd."
+}
+
+usage() {
+cat <<'USAGE'
+clawdbox one-shot installer for macOS
+
+  curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh | bash
+  curl -fsSL .../install.sh | bash -s -- --mac XX:XX:XX:XX:XX:XX     # original Evo
+  ./install.sh [options]                                            # from a checkout
+
+Options:
+  --dir PATH        where to keep the checkout (default ~/Tools/clawdbox, or the current official checkout)
+  --mac XX:XX:…     original Timebox Evo over Bluetooth Classic (default is --ble, the newer Evo)
+  --auto-update     also install a six-hourly updater that follows release tags (off by default)
+  --no-hooks        don't touch ~/.claude/settings.json
+  --no-launchd      don't install the login agent (you run the daemon yourself)
+  --no-menubar      skip the menu bar app
+  --brightness N    panel brightness 0-100 (default 100)
+USAGE
+}
+
+main "$@"

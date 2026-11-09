@@ -7,3 +7,4 @@ dist/
 .venv/
 __pycache__/
 menubar/build/
+.ruff_cache/

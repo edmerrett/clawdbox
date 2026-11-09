@@ -9,7 +9,6 @@ declare module 'bluetooth-serial-port' {
 
   export class BluetoothSerialPort extends EventEmitter {
     constructor();
-    inquire(): void;
     findSerialPortChannel(address: string, successCallback: (channel: number) => void, errorCallback?: () => void): void;
     connect(address: string, channel: number, successCallback: () => void, errorCallback?: (err?: Error) => void): void;
     write(buffer: Buffer, cb: (err?: Error) => void): void;

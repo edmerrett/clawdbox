@@ -1,6 +1,8 @@
 /**
- * Transport to the Evo. `RfcommLink` uses bluetooth-serial-port (Bluetooth Classic
- * SPP, works on macOS via IOBluetooth and on Linux via BlueZ). `MockLink` logs.
+ * Transports for the original Timebox Evo (Bluetooth Classic). `RfcommLink` opens
+ * an RFCOMM channel through bluetooth-serial-port (IOBluetooth on macOS, BlueZ on
+ * Linux); `SerialLink` writes to the OS-provided serial device for a paired SPP
+ * device; `MockLink` discards everything and is used by tests and `--mock`.
  */
 import { EventEmitter } from 'node:events';
 
@@ -15,7 +17,8 @@ export interface Link extends EventEmitter {
 export class MockLink extends EventEmitter implements Link {
   open = false;
   readonly label = 'mock';
-  constructor(private readonly verbose = false) {
+  /** Pass a logger to see every message that would have gone to the panel. */
+  constructor(private readonly trace?: (m: string) => void) {
     super();
   }
   async connect(): Promise<void> {
@@ -23,7 +26,7 @@ export class MockLink extends EventEmitter implements Link {
   }
   async write(buf: Buffer): Promise<void> {
     if (!this.open) throw new Error('mock link closed');
-    if (this.verbose) console.log(`[mock] ${buf.length} bytes: ${buf.subarray(0, 8).toString('hex')}...`);
+    this.trace?.(`[mock] ${buf.length} bytes: ${buf.subarray(0, 8).toString('hex')}...`);
   }
   close(): void {
     this.open = false;
@@ -41,14 +44,7 @@ export interface BtPairedDevice {
   services?: BtService[];
 }
 
-interface BtSerial extends EventEmitter {
-  listPairedDevices(cb: (devices: BtPairedDevice[]) => void): void;
-  findSerialPortChannel(address: string, ok: (channel: number) => void, fail?: () => void): void;
-  connect(address: string, channel: number, ok: () => void, fail?: (err?: Error) => void): void;
-  write(buffer: Buffer, cb: (err?: Error) => void): void;
-  close(): void;
-  isOpen(): boolean;
-}
+type BtSerial = import('bluetooth-serial-port').BluetoothSerialPort;
 
 /** Compare Bluetooth addresses regardless of case and separator ("-" on macOS, ":" elsewhere). */
 export function sameAddress(a: string, b: string): boolean {
@@ -84,9 +80,9 @@ export class RfcommLink extends EventEmitter implements Link {
   }
 
   async connect(): Promise<void> {
-    let mod: { BluetoothSerialPort: new () => BtSerial };
+    let mod: typeof import('bluetooth-serial-port');
     try {
-      mod = (await import('bluetooth-serial-port')) as unknown as { BluetoothSerialPort: new () => BtSerial };
+      mod = await import('bluetooth-serial-port');
     } catch (e) {
       throw new Error(
         `bluetooth-serial-port is not installed or failed to build (${(e as Error).message}). ` +
@@ -94,12 +90,13 @@ export class RfcommLink extends EventEmitter implements Link {
       );
     }
     if (this.port) {
+      // detach first so the old port's 'closed' does not look like a fresh drop
+      this.port.removeAllListeners();
       try {
         this.port.close();
       } catch {
         /* previous attempt already dead */
       }
-      this.port.removeAllListeners();
     }
     const port = new mod.BluetoothSerialPort();
     this.port = port;
@@ -241,6 +238,8 @@ export class SerialLink extends EventEmitter implements Link {
     } catch (e) {
       if (this.open) {
         this.open = false;
+        if (this.fh === fh) this.fh = null;
+        void fh.close().catch(() => {});
         this.emit('closed', e as Error);
       }
     }

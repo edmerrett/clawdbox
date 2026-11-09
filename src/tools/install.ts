@@ -1,7 +1,7 @@
 /**
  * Installers: merge hooks into ~/.claude/settings.json and write a launchd agent.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, renameSync, statSync, chmodSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -24,24 +24,32 @@ export function validateDaemonUrl(url: string): string {
   return u.href;
 }
 
-export function hookHandler(url: string, mode: 'command' | 'http'): Handler {
-  url = validateDaemonUrl(url);
-  if (mode === 'http') {
+export type HookTarget = { mode: 'http'; url: string } | { mode: 'command'; socketPath: string };
+
+const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+
+export function hookHandler(target: HookTarget): Handler {
+  if (target.mode === 'http') {
     // Awaited by Claude Code; a dead daemon shows a non-blocking error on each event.
-    return { type: 'http', url, timeout: 2, statusMessage: MARKER };
+    return { type: 'http', url: validateDaemonUrl(target.url), timeout: 2, statusMessage: MARKER };
   }
-  // Fire-and-forget: async command, exits 0 whatever happens, output discarded.
+  if (!/^[A-Za-z0-9 ._\/-]+$/.test(target.socketPath) || !target.socketPath.startsWith('/')) {
+    throw new Error(`socket path has characters that are not allowed: ${target.socketPath}`);
+  }
+  // Fire-and-forget: async command, exits 0 whatever happens, output discarded. Talks to the
+  // daemon's 0600 Unix socket, so no other local process can receive the payload. /usr/bin/curl
+  // is pinned so a project-level PATH cannot swap the binary.
   return {
     type: 'command',
-    command: `curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- '${url}' >/dev/null 2>&1 || true`,
+    command: `/usr/bin/curl -s --connect-timeout 0.3 -m 1 --unix-socket ${shq(target.socketPath)} -X POST -H 'Content-Type: application/json' --data-binary @- http://clawdbox/event >/dev/null 2>&1 || true`,
     async: true,
     timeout: 5,
     statusMessage: MARKER,
   };
 }
 
-export function buildHooks(url: string, mode: 'command' | 'http'): Record<string, unknown[]> {
-  const h = hookHandler(url, mode);
+export function buildHooks(target: HookTarget): Record<string, unknown[]> {
+  const h = hookHandler(target);
   const out: Record<string, unknown[]> = {};
   for (const ev of HOOK_EVENTS_WITH_MATCHER) out[ev] = [{ matcher: '*', hooks: [h] }];
   for (const ev of HOOK_EVENTS_PLAIN) out[ev] = [{ hooks: [h] }];
@@ -50,15 +58,7 @@ export function buildHooks(url: string, mode: 'command' | 'http'): Record<string
 
 function isOurs(group: unknown): boolean {
   const g = group as { hooks?: Handler[] };
-  return (
-    Array.isArray(g?.hooks) &&
-    g.hooks.some(
-      (h) =>
-        h.statusMessage === MARKER ||
-        (typeof h.command === 'string' && h.command.includes('7676/event')) ||
-        (typeof h.url === 'string' && h.url.endsWith('/event') && h.statusMessage === MARKER),
-    )
-  );
+  return Array.isArray(g?.hooks) && g.hooks.some((h) => h.statusMessage === MARKER);
 }
 
 /** Merge our hooks into an existing settings object, replacing earlier clawdbox entries only. */
@@ -96,24 +96,45 @@ function readSettings(path: string): Record<string, unknown> {
   }
 }
 
-/** Write via a temp file and rename so a crash never leaves a half-written settings file. */
-function writeSettings(path: string, settings: Record<string, unknown>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.clawdbox.tmp`;
-  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+/**
+ * Write via a temp file and rename so a crash never leaves a half-written settings
+ * file. settings.json may hold secrets (env, apiKeyHelper), so the new file keeps the
+ * old file's mode (0600 for a fresh one) and the write is refused if the file changed
+ * underneath us (Claude Code edits it too).
+ */
+function writeSettings(path: string, settings: Record<string, unknown>, expectRaw: string | null): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
+  if (expectRaw !== null && existsSync(path) && readFileSync(path, 'utf8') !== expectRaw) {
+    throw new Error(`${path} changed while we were editing it; please re-run`);
+  }
+  const tmp = `${path}.clawdbox.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', { mode });
+  chmodSync(tmp, mode);
   renameSync(tmp, path);
 }
 
-export function installHooks(url: string, mode: 'command' | 'http', path = settingsPath()): void {
+export function backupPath(path = settingsPath()): string {
+  return `${path}.clawdbox.bak`;
+}
+
+export function installHooks(target: HookTarget, path = settingsPath()): void {
+  const raw = existsSync(path) ? readFileSync(path, 'utf8') : null;
   const settings = readSettings(path);
-  // keep the first pristine backup; later installs only touch our own entries
-  if (existsSync(path) && !existsSync(`${path}.clawdbox.bak`)) copyFileSync(path, `${path}.clawdbox.bak`);
-  writeSettings(path, mergeHooks(settings, buildHooks(url, mode)));
+  // keep the first pristine backup (same mode as the original); later installs only touch our own entries
+  if (raw !== null && !existsSync(backupPath(path))) {
+    copyFileSync(path, backupPath(path));
+    chmodSync(backupPath(path), statSync(path).mode & 0o777);
+  }
+  writeSettings(path, mergeHooks(settings, buildHooks(target)), raw);
 }
 
 export function uninstallHooks(path = settingsPath()): void {
-  if (!existsSync(path)) return;
-  writeSettings(path, removeHooks(readSettings(path)));
+  if (existsSync(path)) {
+    const raw = readFileSync(path, 'utf8');
+    writeSettings(path, removeHooks(readSettings(path)), raw);
+  }
+  rmSync(backupPath(path), { force: true });
 }
 
 /* ---------- launchd + app bundle ---------- */
@@ -122,7 +143,6 @@ export const LAUNCHD_LABEL = 'com.clawdbox.daemon';
 export const APP_NAME = 'Clawdbox';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
  * macOS grants Bluetooth per *app*: a process whose responsible bundle has no
@@ -130,7 +150,7 @@ const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
  * So the launchd agent runs a minimal app bundle whose only executable is a
  * shell script that execs the daemon. TCC then prompts once for "Clawdbox".
  */
-export function appBundleFiles(opts: { node: string; cli: string; args: string[]; cwd: string }): Record<string, string> {
+export function appBundleFiles(opts: { node: string; cli: string; args: string[]; cwd: string; version?: string }): Record<string, string> {
   const script = `#!/bin/bash
 # Launcher for the clawdbox daemon; lives in an app bundle so macOS lets it use Bluetooth.
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
@@ -144,8 +164,8 @@ exec ${shq(opts.node)} ${shq(opts.cli)} daemon ${opts.args.map(shq).join(' ')}
     <key>CFBundleName</key><string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${LAUNCHD_LABEL}</string>
-    <key>CFBundleVersion</key><string>1</string>
-    <key>CFBundleShortVersionString</key><string>0.1</string>
+    <key>CFBundleVersion</key><string>${esc(opts.version ?? '0')}</string>
+    <key>CFBundleShortVersionString</key><string>${esc(opts.version ?? '0')}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>clawdbox</string>
     <key>LSUIElement</key><true/>
