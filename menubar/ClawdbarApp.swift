@@ -28,6 +28,58 @@ struct DaemonState: Decodable {
 }
 
 let daemonBase = URL(string: ProcessInfo.processInfo.environment["CLAWDBOX_URL"] ?? "http://127.0.0.1:7676")!
+
+/// What the menu bar shows for a given daemon state. Shared by the live UI and `--check`,
+/// so the headless check exercises exactly the rendering the user sees.
+struct Rendering {
+    let title: String
+    let dimmed: Bool
+    let connection: String
+    let showing: String
+    let transport: String
+    let sessions: String
+
+    static func offline() -> Rendering {
+        Rendering(title: " offline", dimmed: true, connection: "Daemon not running",
+                  showing: "Start it with: clawdbox daemon --ble", transport: "", sessions: "")
+    }
+
+    init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String) {
+        self.title = title; self.dimmed = dimmed; self.connection = connection
+        self.showing = showing; self.transport = transport; self.sessions = sessions
+    }
+
+    init(_ s: DaemonState) {
+        title = " " + s.current + (s.device.connected ? "" : " (no panel)")
+        dimmed = !s.device.connected
+        connection = s.device.connected
+            ? "Connected to Divoom (\(s.device.pushes) pushes)"
+            : "Panel disconnected" + (s.device.lastError.map { ": \($0)" } ?? "")
+        var line = "Showing: \(s.current)"
+        if s.pending != s.current { line += "  →  \(s.pending)" }
+        if let f = s.forced { line += "  (forced \(f))" }
+        showing = line
+        transport = "Transport: \(s.transport ?? s.device.label)"
+        let n = s.sessions.count
+        sessions = "\(n) Claude session\(n == 1 ? "" : "s") · up \(s.uptimeSec / 60) min"
+    }
+}
+
+/// Fetch /state once, synchronously. Used by `--check`.
+func fetchStateSync(timeout: TimeInterval = 3) -> Result<DaemonState, Error> {
+    var request = URLRequest(url: daemonBase.appendingPathComponent("state"))
+    request.timeoutInterval = timeout
+    let sem = DispatchSemaphore(value: 0)
+    var result: Result<DaemonState, Error> = .failure(URLError(.unknown))
+    URLSession.shared.dataTask(with: request) { data, _, error in
+        defer { sem.signal() }
+        if let error = error { result = .failure(error); return }
+        do { result = .success(try JSONDecoder().decode(DaemonState.self, from: data ?? Data())) }
+        catch { result = .failure(error) }
+    }.resume()
+    sem.wait()
+    return result
+}
 let allStates = ["idle", "thinking", "ultrathink", "reading", "writing", "running", "needs-you", "coffee", "vibing", "wave", "done", "error", "heart"]
 let launchdLabel = "com.clawdbox.daemon"
 
@@ -139,27 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func render() {
-        guard reachable, let s = lastState else {
-            statusItem.button?.image = clawdIcon(dimmed: true)
-            statusItem.button?.title = " offline"
-            connectionItem.title = "Daemon not running"
-            showingItem.title = "Start it with: clawdbox daemon --ble"
-            transportItem.title = ""
-            sessionsItem.title = ""
-            return
-        }
-        statusItem.button?.image = clawdIcon(dimmed: !s.device.connected)
-        statusItem.button?.title = " " + s.current + (s.device.connected ? "" : " (no panel)")
-        connectionItem.title = s.device.connected
-            ? "Connected to Divoom (\(s.device.pushes) pushes)"
-            : "Panel disconnected" + (s.device.lastError.map { ": \($0)" } ?? "")
-        var showing = "Showing: \(s.current)"
-        if s.pending != s.current { showing += "  →  \(s.pending)" }
-        if let f = s.forced { showing += "  (forced \(f))" }
-        showingItem.title = showing
-        transportItem.title = "Transport: \(s.transport ?? s.device.label)"
-        let n = s.sessions.count
-        sessionsItem.title = "\(n) Claude session\(n == 1 ? "" : "s") · up \(s.uptimeSec / 60) min"
+        let r: Rendering
+        if reachable, let s = lastState { r = Rendering(s) } else { r = Rendering.offline() }
+        statusItem.button?.image = clawdIcon(dimmed: r.dimmed)
+        statusItem.button?.title = r.title
+        connectionItem.title = r.connection
+        showingItem.title = r.showing
+        transportItem.title = r.transport
+        sessionsItem.title = r.sessions
     }
 
     // MARK: actions
@@ -189,6 +228,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let logs = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/clawdbox/clawdbox.log")
         NSWorkspace.shared.open(logs)
+    }
+}
+
+// `Clawdbar --check`: print what the menu bar would show and exit (used by CI and for debugging).
+if CommandLine.arguments.contains("--check") {
+    switch fetchStateSync() {
+    case .success(let state):
+        let r = Rendering(state)
+        print("title:\(r.title)")
+        print("connected: \(state.device.connected)")
+        print("state: \(state.current)")
+        print("transport: \(state.transport ?? "-")")
+        print(r.connection)
+        print(r.showing)
+        print(r.sessions)
+        exit(0)
+    case .failure(let error):
+        let r = Rendering.offline()
+        print("title:\(r.title)")
+        print("error: \(error.localizedDescription)")
+        exit(1)
     }
 }
 

@@ -44,8 +44,33 @@ jobs:
       - run: ruff format --check bridge scripts
       - run: python -m py_compile bridge/clawdbox_ble.py
   swift:
-    name: menu bar app builds
+    name: menu bar app builds and reads the daemon
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
       - run: menubar/build.sh build
+      # Run a real daemon against the mock panel and make sure the app renders its state.
+      - name: menu bar app reports connection and current mode
+        run: |
+          node dist/cli.js daemon --mock --port 7676 > daemon.log 2>&1 &
+          for i in $(seq 1 50); do curl -sf http://127.0.0.1:7676/health >/dev/null && break; sleep 0.2; done
+          APP=build/Clawdbar.app/Contents/MacOS/Clawdbar
+          echo "--- initial"; "$APP" --check | tee check1.txt
+          grep -q '^connected: true' check1.txt
+          grep -q '^transport: mock' check1.txt
+          grep -q '^title: idle' check1.txt
+          curl -sf -X POST http://127.0.0.1:7676/show/reading >/dev/null
+          sleep 1
+          echo "--- after forcing reading"; "$APP" --check | tee check2.txt
+          grep -q '^state: reading' check2.txt
+          grep -q '^title: reading' check2.txt
+          kill %1
+          echo "--- daemon down"
+          if "$APP" --check | tee check3.txt; then echo "expected failure when daemon is down"; exit 1; fi
+          grep -q '^title: offline' check3.txt

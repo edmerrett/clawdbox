@@ -90,6 +90,8 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt
    ```bash
    menubar/install.sh
    ```
+   `~/Applications/Clawdbar.app/Contents/MacOS/Clawdbar --check` prints what the menu bar would show, handy when
+   something looks off.
 7. **`clawdbox` from anywhere** (optional): `npm link`.
 
 No panel yet? `npm run dev` runs everything against a mock panel so you can develop hooks and art on the previewer.
