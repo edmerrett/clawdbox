@@ -12,7 +12,7 @@ import { Display } from './display.js';
 
 export interface BleOptions {
   address?: string;
-  mode?: 'upload' | 'stream';
+  mode?: 'upload' | 'stream' | 'slots';
   brightness?: number;
   python?: string;
   repoRoot: string;
@@ -46,6 +46,8 @@ export class BleDisplay implements Display {
   private queue: Promise<void> = Promise.resolve();
   private closed = false;
   private restartMs = 2000;
+  private preloading = false;
+  private preloaded = false;
   private readonly log: (m: string) => void;
 
   constructor(private readonly opts: BleOptions) {
@@ -73,6 +75,7 @@ export class BleDisplay implements Display {
     proc.on('exit', (code) => {
       this.proc = null;
       this.connected = false;
+      this.preloaded = false;
       const waiters = this.waiters;
       this.waiters = [];
       for (const w of waiters) w({ ev: 'error', message: `bridge exited (${code})` });
@@ -100,6 +103,21 @@ export class BleDisplay implements Display {
         this.lastError = null;
         this.restartMs = 2000;
         this.log(`bridge connected to ${ev.address}`);
+        if (this.opts.mode === 'slots' && this.anims && !this.preloading) {
+          // Upload every loop once; afterwards each state change is a single play command.
+          this.preloading = true;
+          const anims = Object.entries(this.anims).map(([name, a]) => ({ name, frames: a.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) }));
+          // Not chained on the show queue: show() waits for preloaded, so chaining would deadlock.
+          this.request({ op: 'preload', anims }, 120_000)
+            .then((r) => {
+              this.preloaded = true;
+              this.log(`preloaded slots: ${JSON.stringify(r.slots)}`);
+            })
+            .catch((e) => this.log(`preload failed: ${(e as Error).message}`))
+            .finally(() => {
+              this.preloading = false;
+            });
+        }
         break;
       case 'error':
         this.lastError = ev.message ?? 'error';
@@ -107,7 +125,7 @@ export class BleDisplay implements Display {
         if (ev.fatal) this.closed = true;
         break;
     }
-    if (ev.ev === 'shown' || ev.ev === 'error' || ev.ev === 'brightness' || ev.ev === 'pong') {
+    if (ev.ev === 'shown' || ev.ev === 'error' || ev.ev === 'brightness' || ev.ev === 'pong' || ev.ev === 'preloaded') {
       const w = this.waiters.shift();
       if (w) w(ev);
     }
@@ -134,12 +152,16 @@ export class BleDisplay implements Display {
   show(state: State): Promise<void> {
     const anim = this.anims?.[state];
     if (!anim) return Promise.reject(new Error(`no animation prepared for ${state}`));
-    const msg = { op: 'anim', name: state, frames: anim.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) };
+    const msg =
+      this.opts.mode === 'slots'
+        ? { op: 'play', name: state }
+        : { op: 'anim', name: state, frames: anim.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) };
     this.queue = this.queue
       .then(async () => {
+        if (this.opts.mode === 'slots') await this.waitPreloaded();
         const ev = await this.request(msg);
         this.pushes++;
-        this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}`);
+        this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot})` : ''}`);
       })
       .catch((e) => {
         this.lastError = (e as Error).message;
@@ -151,6 +173,16 @@ export class BleDisplay implements Display {
 
   async setBrightness(percent: number): Promise<void> {
     await this.request({ op: 'brightness', value: Math.max(0, Math.min(100, Math.round(percent))) });
+  }
+
+  /** slots mode: block until every loop sits in its slot (the bridge uploads them right after connecting). */
+  private async waitPreloaded(timeoutMs = 150_000): Promise<void> {
+    this.start();
+    const t0 = Date.now();
+    while (!this.preloaded && !this.closed) {
+      if (Date.now() - t0 > timeoutMs) throw new Error('slots were not preloaded in time');
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
   /** Make sure the bridge is up and connected (waits for the first connected event). */

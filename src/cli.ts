@@ -21,9 +21,10 @@ import { loadAnimSet } from './anim/load.js';
 const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
-  clawdbox daemon (--ble [--address UUID] [--stream] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
+  clawdbox daemon (--ble [--address UUID] [--stream | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
                   [--anims DIR] [--port 7676] [--brightness 0-100] [--hold-ms 2000] [--idle-ms 90000] [-v]
       --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
+                 --stream: stills at the frame rate, no transfer screen. --slots: preload all loops, switch by slot.
       --mac      original Timebox Evo (Bluetooth Classic serial)
   clawdbox discover                 list paired Bluetooth Classic devices (needs bluetooth-serial-port)
   clawdbox ble-scan                 list Divoom BLE devices (needs the Python bridge deps)
@@ -49,6 +50,7 @@ const { values: v, positionals } = parseArgs({
     ble: { type: 'boolean', default: false },
     address: { type: 'string' },
     stream: { type: 'boolean', default: false },
+    slots: { type: 'boolean', default: false },
     python: { type: 'string' },
     channel: { type: 'string' },
     mock: { type: 'boolean', default: false },
@@ -87,7 +89,7 @@ async function main() {
         serial: v.serial,
         ble: v.ble,
         bleAddress: v.address,
-        bleMode: v.stream ? 'stream' : 'upload',
+        bleMode: bleMode(),
         python: v.python,
         channel: v.channel ? Number(v.channel) : undefined,
         mock: v.mock,
@@ -141,6 +143,7 @@ async function main() {
         args.push('--ble');
         if (v.address) args.push('--address', v.address);
         if (v.stream) args.push('--stream');
+        if (v.slots) args.push('--slots');
         args.push('--python', resolvePython(repoRoot(), v.python));
       } else if (v.serial) args.push('--serial', v.serial);
       else args.push('--mac', v.mac!);
@@ -302,9 +305,13 @@ async function main() {
   }
 }
 
+function bleMode(): 'upload' | 'stream' | 'slots' {
+  return v.slots ? 'slots' : v.stream ? 'stream' : 'upload';
+}
+
 /** Build a display from --ble / --mock / --serial / --mac. */
 function makeDisplay(log: (m: string) => void): Display {
-  if (v.ble) return new BleDisplay({ address: v.address, mode: v.stream ? 'stream' : 'upload', brightness: v.brightness ? Number(v.brightness) : undefined, python: v.python, repoRoot: repoRoot(), log });
+  if (v.ble) return new BleDisplay({ address: v.address, mode: bleMode(), brightness: v.brightness ? Number(v.brightness) : undefined, python: v.python, repoRoot: repoRoot(), log });
   return new Device(makeLink(), { log, brightness: v.brightness ? Number(v.brightness) : undefined });
 }
 

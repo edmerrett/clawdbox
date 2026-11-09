@@ -17,7 +17,7 @@ export interface DaemonConfig {
   /** Newer Evo generation: drive it over BLE via the Python bridge. */
   ble?: boolean;
   bleAddress?: string;
-  bleMode?: 'upload' | 'stream';
+  bleMode?: 'upload' | 'stream' | 'slots';
   python?: string;
   channel?: number;
   mock: boolean;

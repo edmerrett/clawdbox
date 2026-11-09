@@ -122,12 +122,18 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 HTTP API: `POST /event` (hook JSON → 204), `GET /state`, `GET /anims`, `POST /show/<state>` (force, for testing), `GET /` previewer.
 
 ## BLE notes (newer Evo)
-`--ble` uploads each state's loop to the panel with the `0x8b` animation command and lets the panel play it on
-its own, so a held state costs no Bluetooth traffic and plays at the panel's full frame rate. Upload takes roughly a
-second. divoom-protocol has not confirmed whether these uploads also write the panel's flash; if you would rather not
-find out the hard way, `--stream` pushes `0x44` stills at the frame timing instead (capped around 4 fps, constant
-traffic, nothing stored). The bridge reconnects and re-runs the handshake by itself when the link drops. If the panel
-stops reacting after an unclean disconnect, power-cycle it.
+Three ways to get frames onto the panel, pick with a flag:
+
+| mode | what happens on a state change | trade-off |
+|---|---|---|
+| `--ble` (upload) | the loop is uploaded (~0.5 s) and the panel plays it | the panel shows its own transfer screen during every upload, which with frequent changes is most of the time |
+| `--ble --slots` | all six loops are uploaded once at startup, then one play-slot command per change | instant and silent, if the firmware honours slot selection for uploaded content (divoom-protocol lists this as unverified) |
+| `--ble --stream` | each frame is pushed as a still at the frame's own timing | no transfer screen, nothing stored; capped around 4 fps and constant BLE traffic |
+
+divoom-protocol has not confirmed whether uploads write the panel's flash, so prefer `--slots` (six writes per
+daemon start) or `--stream` (none) over plain upload for an always-on toy. The bridge reconnects and re-runs the
+handshake by itself when the link drops, and re-uploads slots after a reconnect. If the panel stops reacting after
+an unclean disconnect, power-cycle it.
 
 ## Protocol notes
 The encoder (`src/protocol/divoom.ts`) follows RomRider's reverse-engineered

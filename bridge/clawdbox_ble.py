@@ -14,7 +14,10 @@ Modes:
   upload  (default) one 0x8b animation upload per state change; the panel then loops it
           on its own, so no traffic while a state is held.
   stream  push each frame as a 0x44 still at the frame's own timing (capped ~4 fps).
-          Constant traffic, but avoids writing to the panel's storage on every change.
+          Constant traffic, but no transfer screen and nothing written to storage.
+  slots   upload every animation once (op "preload") into slots 0..N, then switch
+          with a single play_slot command per state change. Instant, if the firmware
+          honours slot selection for uploaded content.
 
 Depends on the divoom-protocol package (pip install -r bridge/requirements.txt).
 Run from Terminal.app or iTerm2 on macOS: the spawning app must declare Bluetooth usage.
@@ -53,6 +56,8 @@ class Bridge:
         self.client = None
         self.stream_task = None
         self.lock = asyncio.Lock()
+        self.slot_of = {}      # name -> slot (slots mode)
+        self.preloaded = []    # [(name, frames)] so we can re-upload after a reconnect
 
     # ---------- connection ----------
     async def connect(self):
@@ -94,6 +99,9 @@ class Bridge:
             pass
         self.client = None
         await self.connect()
+        if self.mode == "slots" and self.preloaded:
+            log("re-uploading slots after reconnect")
+            await self.preload(self.preloaded, announce=False)
 
     async def with_retry(self, fn):
         """Run fn(); on a BLE error reconnect once and run it again."""
@@ -114,6 +122,35 @@ class Bridge:
                 pass
             self.stream_task = None
 
+    def encode_chunks(self, slot, frames):
+        pixels = [[tuple(p) for p in f["pixels"]] for f in frames]
+        times = [max(50, int(f.get("ms", 100))) for f in frames]
+        stream = aa_frame.encode_animation_stream(pixels, frame_time_ms=times)
+        payloads = aa_frame.split_into_chunks(stream)
+        if len(payloads) > 255:
+            raise RuntimeError(f"animation too large: {len(payloads)} chunks")
+        return [commands.animation_chunk(slot, len(payloads), i, p) for i, p in enumerate(payloads)]
+
+    async def preload(self, anims, announce=True):
+        """slots mode: upload each animation into its own slot once."""
+        self.preloaded = anims
+        for i, (name, frames) in enumerate(anims):
+            slot = self.slot + i
+            self.slot_of[name] = slot
+            chunks = self.encode_chunks(slot, frames)
+            await self.with_retry(lambda: self.client.upload_animation(slot, chunks))
+            log(f"preloaded {name} into slot {slot}")
+            await asyncio.sleep(0.3)
+        if announce:
+            emit(ev="preloaded", slots=self.slot_of)
+
+    async def play(self, name):
+        slot = self.slot_of.get(name)
+        if slot is None:
+            raise RuntimeError(f"{name} was not preloaded")
+        await self.with_retry(lambda: self.client.play_slot(slot))
+        emit(ev="shown", name=name, mode="slots", slot=slot)
+
     async def show_anim(self, name, frames):
         pixels = [[tuple(p) for p in f["pixels"]] for f in frames]
         times = [max(50, int(f.get("ms", 100))) for f in frames]
@@ -127,11 +164,7 @@ class Bridge:
             return
 
         async def upload():
-            stream = aa_frame.encode_animation_stream(pixels, frame_time_ms=times)
-            payloads = aa_frame.split_into_chunks(stream)
-            if len(payloads) > 255:
-                raise RuntimeError(f"animation too large: {len(payloads)} chunks")
-            chunks = [commands.animation_chunk(self.slot, len(payloads), i, p) for i, p in enumerate(payloads)]
+            chunks = self.encode_chunks(self.slot, frames)
             await self.client.upload_animation(self.slot, chunks)
 
         t0 = time.time()
@@ -176,6 +209,10 @@ class Bridge:
                 try:
                     if op == "anim":
                         await self.show_anim(msg.get("name", "?"), msg["frames"])
+                    elif op == "preload":
+                        await self.preload([(a["name"], a["frames"]) for a in msg["anims"]])
+                    elif op == "play":
+                        await self.play(msg["name"])
                     elif op == "brightness":
                         await self.set_brightness(msg["value"])
                     elif op == "ping":
@@ -203,7 +240,7 @@ async def scan_only():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--address", help="BLE address (CoreBluetooth UUID on macOS). Default: scan and take the first Divoom/TimeBox.")
-    ap.add_argument("--mode", choices=["upload", "stream"], default="upload")
+    ap.add_argument("--mode", choices=["upload", "stream", "slots"], default="upload")
     ap.add_argument("--slot", type=int, default=0)
     ap.add_argument("--brightness", type=int)
     ap.add_argument("--scan", action="store_true", help="list devices and exit")
