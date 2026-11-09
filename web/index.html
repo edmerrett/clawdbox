@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clawdbox preview</title>
+<style>
+  :root { --bg:#111; --fg:#eee; --muted:#888; --card:#1b1b1b; --accent:#da7756; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding:16px; }
+  h1 { font-size:16px; margin:0 0 4px; } h1 span { color:var(--accent); }
+  .status { color:var(--muted); margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
+  .card { background:var(--card); border-radius:8px; padding:12px; text-align:center; cursor:pointer; border:2px solid transparent; }
+  .card.current { border-color:var(--accent); }
+  .card.pending { border-style:dashed; border-color:var(--muted); }
+  canvas { width:160px; height:160px; image-rendering:pixelated; background:#000; border-radius:4px; display:block; margin:0 auto 8px; }
+  .name { font-weight:600; } .meta { color:var(--muted); font-size:12px; }
+  .hint { color:var(--muted); margin-top:16px; font-size:12px; }
+  label { color:var(--muted); font-size:12px; margin-left:12px; }
+</style>
+</head>
+<body>
+<h1><span>clawdbox</span> preview</h1>
+<div class="status" id="status">connecting…</div>
+<div class="grid" id="grid"></div>
+<p class="hint">Click a card to force that state on the device (until the next hook event). Shown with LED gamma
+  <label><input type="checkbox" id="gamma" checked> gamma 2.2</label></p>
+<script>
+const SIZE = 16, SCALE = 10;
+const grid = document.getElementById('grid');
+const statusEl = document.getElementById('status');
+const gammaBox = document.getElementById('gamma');
+const players = {};
+
+function lut(g) { const t = new Uint8Array(256); for (let i = 0; i < 256; i++) t[i] = Math.round(255 * Math.pow(i / 255, g)); return t; }
+let LUT = lut(2.2);
+gammaBox.onchange = () => { LUT = gammaBox.checked ? lut(2.2) : lut(1); };
+
+function drawFrame(ctx, frame) {
+  const img = ctx.createImageData(SIZE, SIZE);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const hex = frame.palette[frame.idx[i]];
+    const n = parseInt(hex.slice(1), 16);
+    img.data[i*4] = LUT[(n >> 16) & 255]; img.data[i*4+1] = LUT[(n >> 8) & 255]; img.data[i*4+2] = LUT[n & 255]; img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function player(name, anim) {
+  const card = document.createElement('div'); card.className = 'card'; card.dataset.state = name;
+  const canvas = document.createElement('canvas'); canvas.width = SIZE; canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  const loop = anim.frames.reduce((n, f) => n + f.ms, 0);
+  card.innerHTML = '';
+  card.appendChild(canvas);
+  card.insertAdjacentHTML('beforeend', `<div class="name">${name}</div><div class="meta">${anim.frames.length} frames · ${loop} ms loop</div>`);
+  card.onclick = () => fetch('/show/' + name, { method: 'POST' });
+  grid.appendChild(card);
+  let i = 0;
+  const step = () => { drawFrame(ctx, anim.frames[i]); const ms = anim.frames[i].ms || 100; i = (i + 1) % anim.frames.length; setTimeout(step, ms); };
+  step();
+  players[name] = card;
+}
+
+async function load() {
+  const anims = await (await fetch('/anims')).json();
+  for (const name of ['idle','thinking','reading','writing','running','needs-you']) if (anims[name]) player(name, anims[name]);
+  poll();
+}
+async function poll() {
+  try {
+    const s = await (await fetch('/state')).json();
+    const n = Object.keys(s.sessions).length;
+    statusEl.textContent = `device: ${s.device.label} ${s.device.connected ? 'connected' : 'disconnected'}` +
+      (s.device.lastError ? ` (${s.device.lastError})` : '') + ` · pushes ${s.device.pushes} · sessions ${n} · showing ${s.current}` +
+      (s.pending !== s.current ? ` → ${s.pending}` : '') + (s.forced ? ' (forced)' : '');
+    for (const [name, card] of Object.entries(players)) {
+      card.classList.toggle('current', name === s.current);
+      card.classList.toggle('pending', name === s.pending && name !== s.current);
+    }
+  } catch { statusEl.textContent = 'daemon unreachable'; }
+  setTimeout(poll, 500);
+}
+load();
+</script>
+</body>
+</html>

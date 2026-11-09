@@ -1,0 +1,141 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7676/event",
+            "timeout": 2,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ]
+  }
+}

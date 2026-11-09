@@ -1,0 +1,30 @@
+{
+  "name": "clawdbox",
+  "version": "0.1.0",
+  "description": "Claude Code companion for the Divoom TimeBox Evo: hooks drive a pixel-art Clawd on a 16x16 LED matrix",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "bin": { "clawdbox": "dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts daemon --mock",
+    "daemon": "tsx src/cli.ts daemon",
+    "test": "tsx --test test/*.test.ts",
+    "anims": "tsx src/cli.ts build-anims",
+    "placeholders": "tsx src/cli.ts placeholders",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "optionalDependencies": {
+    "bluetooth-serial-port": "^3.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

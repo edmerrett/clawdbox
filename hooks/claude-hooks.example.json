@@ -1,0 +1,152 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7676/event >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "clawdbox"
+          }
+        ]
+      }
+    ]
+  }
+}
