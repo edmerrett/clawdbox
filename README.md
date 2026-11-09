@@ -54,59 +54,37 @@ connected and which state is up.
   [divoom-protocol](https://github.com/orionparrott/divoom-protocol) package.
 - For the original Evo: Xcode command line tools, if a prebuilt `bluetooth-serial-port` binary is not available for your Node.
 
-## Quick start
+## Install (macOS, one command)
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh | bash
+```
+
+That clones to `~/Tools/clawdbox`, installs the Node and Python dependencies, builds, installs the Claude Code
+hooks, installs the daemon as a login agent with six-hourly auto-update, builds and installs the Clawdbar menu bar
+app, and then waits for Clawd to appear on the panel. Re-running it updates everything. Before you run it:
+
+1. **Pair** the Timebox in System Settings → Bluetooth.
+2. Turn the **phone's Bluetooth off**: the Divoom app reconnects to the box whenever it sees it, and the box accepts
+   one controller at a time.
+3. Run it from **Terminal.app or iTerm2**, which declare Bluetooth usage to macOS.
+
+Original Evo (Bluetooth Classic, see [Which Evo?](#which-evo))? Add `--mac XX:XX:XX:XX:XX:XX`.
+Other flags: `--no-hooks`, `--no-launchd`, `--no-menubar`, `--no-auto-update`, `--brightness N`, `--dir PATH`.
+`uninstall.sh` removes everything the installer set up.
+
+### Step by step instead
 ```bash
 git clone https://github.com/edmerrett/clawdbox && cd clawdbox
 npm install && npm run build
+python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # newer Evo (BLE) only
+node dist/cli.js send writing --ble            # smoke test: Clawd types on the panel (original Evo: --mac XX:…)
+node dist/cli.js daemon --ble -v               # run the daemon; previewer at http://127.0.0.1:7676
+node dist/cli.js install-hooks                 # merge hooks into ~/.claude/settings.json (backs it up first)
+node dist/cli.js install-launchd --ble --auto-update   # login agent + six-hourly updater
+menubar/install.sh                             # Clawdbar menu bar app
 ```
-Newer Evo (the BLE one, see [Which Evo?](#which-evo)) also needs the Python bridge's dependency:
-```bash
-python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt
-```
-
-1. **Pair** the Timebox in System Settings → Bluetooth. Then turn the **phone's Bluetooth off**: the Divoom app
-   reconnects to the box whenever it sees it, and the box accepts one controller at a time.
-2. **Smoke test** from Terminal.app or iTerm2 (macOS grants Bluetooth per app, and those two declare it):
-   ```bash
-   node dist/cli.js send writing --ble          # newer Evo: scans, connects, runs the handshake, Clawd types
-   node dist/cli.js send writing --mac XX:XX:…  # original Evo (find the address with: node dist/cli.js discover)
-   ```
-3. **Run the daemon** and open the previewer at <http://127.0.0.1:7676>. Click a card to force that state.
-   ```bash
-   node dist/cli.js daemon --ble -v
-   ```
-4. **Install the hooks.** Merges into `~/.claude/settings.json`, keeps your other hooks, backs the file up first.
-   ```bash
-   node dist/cli.js install-hooks
-   ```
-   Start a Claude Code session and give it something to do.
-5. **Run it at login.** Writes a tiny `~/Applications/Clawdbox.app` wrapper (so macOS lets it use Bluetooth) and a
-   launchd agent that keeps it alive. Allow the one-time Bluetooth prompt.
-   ```bash
-   node dist/cli.js install-launchd --ble
-   ```
-6. **Menu bar app** (optional). Shows connection and current state, with shortcuts to the previewer and a daemon restart.
-   ```bash
-   menubar/install.sh
-   ```
-   `~/Applications/Clawdbar.app/Contents/MacOS/Clawdbar --check` prints what the menu bar would show, handy when
-   something looks off.
-7. **`clawdbox` from anywhere** (optional): `npm link`.
-
-## Updating
-
-```bash
-clawdbox update            # pull main, rebuild, rebuild Clawdbar if it changed, restart the daemon
-clawdbox update --check    # just say whether origin/main has moved
-```
-`install-launchd --ble --auto-update` adds a second launchd agent that runs the update every six hours (log in
-`~/Library/Logs/clawdbox/update.log`). The daemon also compares its commit with `origin/main` every six hours and
-reports it in `/state`; Clawdbar then shows "Update available" with an "Install Update…" item. `--no-update-check`
-turns the check off. Tagged releases (`v*`) are built by GitHub Actions and published with `Clawdbar.app` zipped
-and the npm tarball attached.
-
-No panel yet? `npm run dev` runs everything against a mock panel so you can develop hooks and art on the previewer.
+`npm link` puts a `clawdbox` command on your PATH. No panel yet? `npm run dev` runs everything against a mock panel.
 
 ## States and reactions
 

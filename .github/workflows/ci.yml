@@ -29,6 +29,7 @@ jobs:
       - run: npm run build
       - run: node dist/cli.js send idle --mock
       - run: node dist/cli.js update --check || test $? -eq 1
+      - run: bash -n install.sh && bash -n uninstall.sh && ./install.sh --help
   python:
     name: bridge (python ${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -56,6 +57,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: menubar/build.sh build
+      - name: one-shot installer (build-only flags)
+        run: ./install.sh --no-hooks --no-launchd --no-menubar
       # Run a real daemon against the mock panel and make sure the app renders its state.
       - name: menu bar app reports connection and current mode
         run: |

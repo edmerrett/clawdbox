@@ -9,7 +9,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # target makes LaunchServices refuse the bundle (error -10825).
 ARCH="$(uname -m)"
 TARGET="${CLAWDBAR_TARGET:-${ARCH}-apple-macos12.0}"
-echo "compiling for $TARGET…"
+echo "compiling for ${TARGET}..."
 swiftc -O -target "$TARGET" -framework Cocoa -o "$APP/Contents/MacOS/Clawdbar" ClawdbarApp.swift
 cp Info.plist "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" "$APP/Contents/Info.plist" >/dev/null 2>&1 || true
