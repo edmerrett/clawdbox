@@ -25,7 +25,21 @@ const BROWN: Rgb = [0x6a, 0x40, 0x20]; // hat
 const BAND: Rgb = [0xa0, 0x68, 0x30]; // hat band
 const PLUM: Rgb = [0x70, 0x20, 0x50]; // skateboard deck
 
-const PAL: Record<string, Rgb> = { O: ORANGE, D: SHADE, G: GREY, L: LIGHT, W: WHITE, C: CYAN, Y: YELLOW, B: BLUE, R: RED, H: BROWN, N: BAND, P: PLUM, K: BLACK };
+const PAL: Record<string, Rgb> = {
+  O: ORANGE,
+  D: SHADE,
+  G: GREY,
+  L: LIGHT,
+  W: WHITE,
+  C: CYAN,
+  Y: YELLOW,
+  B: BLUE,
+  R: RED,
+  H: BROWN,
+  N: BAND,
+  P: PLUM,
+  K: BLACK,
+};
 
 /* ---------- body poses (12 columns) ---------- */
 
@@ -42,15 +56,7 @@ const STAND = [
 ];
 
 /** Crouched a row lower, left arm up, right arm down. */
-const CROUCH = [
-  '..OOOOOOOO..',
-  'OOOOOOOOOO..',
-  'OOOKOOOOKO..',
-  '..OOOOOOOOOO',
-  '..OOOOOOOOOO',
-  '..OOOOOOOO..',
-  '..O.O..O.O..',
-];
+const CROUCH = ['..OOOOOOOO..', 'OOOOOOOOOO..', 'OOOKOOOOKO..', '..OOOOOOOOOO', '..OOOOOOOOOO', '..OOOOOOOO..', '..O.O..O.O..'];
 
 /** Replace the eye row. */
 function withEyes(rows: string[], eyeRow: string): string[] {
@@ -97,7 +103,12 @@ export function idle(): Anim {
 /** Lightbulb above the head, flickering on. */
 function bulb(c: Canvas, on: 0 | 1 | 2) {
   const glass: Rgb = on ? YELLOW : [0x50, 0x48, 0x30];
-  c.blit(['.GGG.', 'GGGGG', 'GGGGG', '.GGG.', '..L..'].map((r) => r.replace(/G/g, 'g')), 9, 0, { ...PAL, g: glass, L: GREY });
+  c.blit(
+    ['.GGG.', 'GGGGG', 'GGGGG', '.GGG.', '..L..'].map((r) => r.replace(/G/g, 'g')),
+    9,
+    0,
+    { ...PAL, g: glass, L: GREY },
+  );
   c.set(11, 4, GREY);
   if (on === 2) {
     // rays
@@ -110,7 +121,15 @@ function bulb(c: Canvas, on: 0 | 1 | 2) {
 
 export function thinking(): Anim {
   const seq: (0 | 1 | 2)[] = [0, 0, 1, 2, 1, 1];
-  return { name: 'thinking', frames: seq.map((on) => frame(on === 2 ? 220 : 300, (c) => { stand(c); bulb(c, on); })) };
+  return {
+    name: 'thinking',
+    frames: seq.map((on) =>
+      frame(on === 2 ? 220 : 300, (c) => {
+        stand(c);
+        bulb(c, on);
+      }),
+    ),
+  };
 }
 
 /** Clawd Shiny: the body cycles through a diagonal rainbow. */
@@ -175,7 +194,14 @@ export function writing(): Anim {
     c.set(15, FEET - 3, GREY);
     if (glow) c.set(14, FEET - 3, CYAN);
   };
-  const seq: [3 | 5, boolean][] = [[5, true], [3, true], [5, true], [3, true], [5, true], [3, false]];
+  const seq: [3 | 5, boolean][] = [
+    [5, true],
+    [3, true],
+    [5, true],
+    [3, true],
+    [5, true],
+    [3, false],
+  ];
   return {
     name: 'writing',
     frames: seq.map(([arms, glow]) =>
@@ -201,7 +227,11 @@ export function running(): Anim {
         const w: Rgb = i % 2 ? YELLOW : [0xa0, 0x80, 0x10];
         c.rect(4, FEET, 2, 1, w);
         c.rect(10, FEET, 2, 1, w);
-        [[6, 2], [8, 1], [10, 2]].forEach(([y, len], j) => {
+        [
+          [6, 2],
+          [8, 1],
+          [10, 2],
+        ].forEach(([y, len], j) => {
           if ((i + j) % 2 === 0) c.rect(0, y, len, 1, CYAN);
         });
       }),
@@ -227,9 +257,18 @@ export function needsYou(): Anim {
 /** Clawd Coffee: a mug in the right arm, steam drifting up. */
 export function coffee(): Anim {
   const steam = [
-    [[13, 7], [14, 5]],
-    [[14, 7], [13, 5]],
-    [[13, 6], [14, 4]],
+    [
+      [13, 7],
+      [14, 5],
+    ],
+    [
+      [14, 7],
+      [13, 5],
+    ],
+    [
+      [13, 6],
+      [14, 4],
+    ],
   ];
   return {
     name: 'coffee',
@@ -288,10 +327,26 @@ export function wave(): Anim {
 /** Clawd Happy: eyes squeezed shut with joy, a little hop, sparkles around the head. */
 export function done(): Anim {
   const sparkles: [number, number][][] = [
-    [[1, 5], [14, 4], [8, 2]],
-    [[2, 3], [13, 6], [6, 1]],
-    [[0, 6], [15, 2], [10, 1]],
-    [[1, 5], [14, 4], [8, 2]],
+    [
+      [1, 5],
+      [14, 4],
+      [8, 2],
+    ],
+    [
+      [2, 3],
+      [13, 6],
+      [6, 1],
+    ],
+    [
+      [0, 6],
+      [15, 2],
+      [10, 1],
+    ],
+    [
+      [1, 5],
+      [14, 4],
+      [8, 2],
+    ],
   ];
   return {
     name: 'done',

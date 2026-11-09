@@ -6,7 +6,15 @@ import { STATES, State } from '../src/anim/types.js';
 
 const loopMs = Object.fromEntries(STATES.map((s) => [s, 800])) as Record<State, number>;
 Object.assign(loopMs, { thinking: 600, reading: 600, writing: 400, running: 400, 'needs-you': 500 });
-const base = { minHoldMs: 2000, idleAfterMs: 90_000, maxBoundaryWaitMs: 1500, loopMs, flashMs: 3500, idleStageAfterMs: 600_000, idleStageCycleMs: 600_000 };
+const base = {
+  minHoldMs: 2000,
+  idleAfterMs: 90_000,
+  maxBoundaryWaitMs: 1500,
+  loopMs,
+  flashMs: 3500,
+  idleStageAfterMs: 600_000,
+  idleStageCycleMs: 600_000,
+};
 const mk = () => new Scheduler(base);
 
 test('holds a state for minHoldMs before switching', () => {

@@ -6,3 +6,4 @@ dist/
 .state/
 .venv/
 __pycache__/
+menubar/build/

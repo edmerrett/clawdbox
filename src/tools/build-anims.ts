@@ -15,7 +15,9 @@ import { Anim, AnimFile, Frame, HEIGHT, Rgb, STATES, WIDTH, isState, toAnimFile 
 import { clawdSprites } from '../anim/clawd.js';
 
 interface AsepriteJson {
-  frames: { filename: string; frame: { x: number; y: number; w: number; h: number }; duration: number }[] | Record<string, { frame: { x: number; y: number; w: number; h: number }; duration: number }>;
+  frames:
+    | { filename: string; frame: { x: number; y: number; w: number; h: number }; duration: number }[]
+    | Record<string, { frame: { x: number; y: number; w: number; h: number }; duration: number }>;
   meta: { image: string; frameTags?: { name: string; from: number; to: number; direction?: string }[] };
 }
 
@@ -60,7 +62,8 @@ export function fromStrips(dir: string, fps: number): Anim[] {
     .filter((f) => f.endsWith('.png'))
     .map((f) => {
       const png = readPng(join(dir, f));
-      if (png.height !== HEIGHT || png.width % WIDTH !== 0) throw new Error(`${f}: expected 16 px tall and a multiple of 16 wide, got ${png.width}x${png.height}`);
+      if (png.height !== HEIGHT || png.width % WIDTH !== 0)
+        throw new Error(`${f}: expected 16 px tall and a multiple of 16 wide, got ${png.width}x${png.height}`);
       const n = png.width / WIDTH;
       return { name: basename(f, '.png'), frames: Array.from({ length: n }, (_, i) => ({ ms, pixels: region(png, i * WIDTH, 0) })) };
     });

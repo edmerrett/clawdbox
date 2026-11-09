@@ -72,13 +72,22 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
 
   let device: Display;
   if (cfg.ble) {
-    device = new BleDisplay({ address: cfg.bleAddress, mode: cfg.bleMode, select: cfg.bleSelect, brightness: cfg.brightness, python: cfg.python, repoRoot: repoRoot(), log });
+    device = new BleDisplay({
+      address: cfg.bleAddress,
+      mode: cfg.bleMode,
+      select: cfg.bleSelect,
+      brightness: cfg.brightness,
+      python: cfg.python,
+      repoRoot: repoRoot(),
+      log,
+    });
   } else {
     let link: Link;
     if (cfg.mock) link = new MockLink(cfg.verbose);
     else if (cfg.serial) link = new SerialLink(cfg.serial, log);
     else {
-      if (!cfg.mac) throw new Error('--ble, --mac XX:XX:XX:XX:XX:XX or --serial /dev/cu.… is required (or --mock). Run "clawdbox discover".');
+      if (!cfg.mac)
+        throw new Error('--ble, --mac XX:XX:XX:XX:XX:XX or --serial /dev/cu.… is required (or --mock). Run "clawdbox discover".');
       link = new RfcommLink(cfg.mac, cfg.channel, 15_000, log);
     }
     device = new Device(link, { brightness: cfg.brightness, log });
@@ -101,7 +110,9 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     const now = Date.now();
     const { action, flash } = reducer.apply(ev, now);
     forced = null;
-    debug(`event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${reducer.aggregate()}`);
+    debug(
+      `event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${reducer.aggregate()}`,
+    );
     sched.setTarget(reducer.aggregate(), now);
     if (flash) sched.flash(flash, now);
   };
@@ -129,6 +140,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         current: sched.current,
         pending: sched.pending,
         forced,
+        transport: cfg.mock ? 'mock' : cfg.ble ? `ble ${cfg.bleMode ?? 'stream'}` : cfg.serial ? 'serial' : 'rfcomm',
         sessions: Object.fromEntries([...reducer.sessions].map(([k, v]) => [k, v])),
         device: { label: device.label, connected: device.connected, pushes: device.pushes, lastError: device.lastError },
         uptimeSec: Math.round(process.uptime()),

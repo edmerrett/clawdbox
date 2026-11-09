@@ -4,8 +4,12 @@
   "description": "Claude Code companion for the Divoom TimeBox Evo: hooks drive a pixel-art Clawd on a 16x16 LED matrix",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20" },
-  "bin": { "clawdbox": "dist/cli.js" },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "clawdbox": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts daemon --mock",
@@ -13,7 +17,9 @@
     "test": "tsx --test test/*.test.ts",
     "anims": "tsx src/cli.ts build-anims",
     "sprites": "tsx src/cli.ts sprites",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" web/index.html",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" web/index.html"
   },
   "dependencies": {
     "pngjs": "^7.0.0"
@@ -25,6 +31,38 @@
     "@types/node": "^22.0.0",
     "@types/pngjs": "^6.0.5",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0"
-  }
+    "typescript": "^5.9.0",
+    "prettier": "^3.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edmerrett/clawdbox.git"
+  },
+  "homepage": "https://github.com/edmerrett/clawdbox#readme",
+  "bugs": {
+    "url": "https://github.com/edmerrett/clawdbox/issues"
+  },
+  "author": "Ed Merrett",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "hooks",
+    "divoom",
+    "timebox-evo",
+    "pixel-art",
+    "led-matrix",
+    "bluetooth",
+    "desk-toy"
+  ],
+  "files": [
+    "dist",
+    "art/anims",
+    "art/README.md",
+    "bridge",
+    "web",
+    "hooks",
+    "menubar",
+    "README.md",
+    "LICENSE"
+  ]
 }

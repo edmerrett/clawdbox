@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wrap, encodeBrightness, encodeImage, encodeAnimation, packIndices, bitsPerPixel, encodeFrame, ANIM_CHUNK } from '../src/protocol/divoom.js';
+import {
+  wrap,
+  encodeBrightness,
+  encodeImage,
+  encodeAnimation,
+  packIndices,
+  bitsPerPixel,
+  encodeFrame,
+  ANIM_CHUNK,
+} from '../src/protocol/divoom.js';
 import { PIXELS, Rgb } from '../src/anim/types.js';
 
 const BLACK: Rgb = [0, 0, 0];
@@ -66,7 +75,14 @@ test('256-colour palette is encoded as 00 with 8 bits per pixel', () => {
 
 test('animation: frames concatenated, chunked at 200 bytes, header repeats total length', () => {
   const frame = (c: Rgb): Rgb[] => Array.from({ length: PIXELS }, (_, i) => (i % 2 ? c : BLACK));
-  const anim = { name: 't', frames: [{ ms: 120, pixels: frame(ORANGE) }, { ms: 80, pixels: frame([0, 255, 0]) }, { ms: 100, pixels: frame([0, 0, 255]) }] };
+  const anim = {
+    name: 't',
+    frames: [
+      { ms: 120, pixels: frame(ORANGE) },
+      { ms: 80, pixels: frame([0, 255, 0]) },
+      { ms: 100, pixels: frame([0, 0, 255]) },
+    ],
+  };
   const msgs = encodeAnimation(anim);
   const perFrame = 45;
   const total = perFrame * 3; // 135 bytes -> 1 chunk

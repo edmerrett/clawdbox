@@ -36,7 +36,15 @@ export function buildHooks(url: string, mode: 'command' | 'http'): Record<string
 
 function isOurs(group: unknown): boolean {
   const g = group as { hooks?: Handler[] };
-  return Array.isArray(g?.hooks) && g.hooks.some((h) => h.statusMessage === MARKER || (typeof h.command === 'string' && h.command.includes('7676/event')) || (typeof h.url === 'string' && h.url.endsWith('/event') && h.statusMessage === MARKER));
+  return (
+    Array.isArray(g?.hooks) &&
+    g.hooks.some(
+      (h) =>
+        h.statusMessage === MARKER ||
+        (typeof h.command === 'string' && h.command.includes('7676/event')) ||
+        (typeof h.url === 'string' && h.url.endsWith('/event') && h.statusMessage === MARKER),
+    )
+  );
 }
 
 /** Merge our hooks into an existing settings object, replacing earlier clawdbox entries only. */

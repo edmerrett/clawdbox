@@ -56,10 +56,7 @@ export interface SessionRecord {
   ultra: boolean;
 }
 
-export type ReducerAction =
-  | { kind: 'set'; state: ActivityState }
-  | { kind: 'end' }
-  | { kind: 'ignore'; why: string };
+export type ReducerAction = { kind: 'set'; state: ActivityState } | { kind: 'end' } | { kind: 'ignore'; why: string };
 
 export interface ReducerResult {
   action: ReducerAction;

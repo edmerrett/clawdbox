@@ -111,7 +111,10 @@ export class BleDisplay implements Display {
         if (this.opts.mode === 'slots' && this.anims && !this.preloading) {
           // Upload every loop once; afterwards each state change is a single play command.
           this.preloading = true;
-          const anims = Object.entries(this.anims).map(([name, a]) => ({ name, frames: a.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) }));
+          const anims = Object.entries(this.anims).map(([name, a]) => ({
+            name,
+            frames: a.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })),
+          }));
           // Not chained on the show queue: show() waits for preloaded, so chaining would deadlock.
           this.request({ op: 'preload', anims }, 120_000)
             .then((r) => {
@@ -169,7 +172,9 @@ export class BleDisplay implements Display {
         else await this.ensureConnected();
         const ev = await this.request(msg);
         this.pushes++;
-        this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot}, sent ${ev.payload})` : ''}`);
+        this.log(
+          `showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot}, sent ${ev.payload})` : ''}`,
+        );
       })
       .catch((e) => {
         this.lastError = (e as Error).message;

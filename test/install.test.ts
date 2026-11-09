@@ -31,7 +31,7 @@ test('mergeHooks keeps unrelated hooks and replaces earlier clawdbox entries', (
   const stop = (twice.hooks as Record<string, unknown[]>).Stop;
   assert.equal(stop.length, 2, 'user hook + exactly one clawdbox hook');
   assert.deepEqual((stop[0] as { hooks: unknown[] }).hooks[0], { type: 'command', command: 'say done' });
-  assert.equal(((stop[1] as { hooks: Record<string, unknown>[] }).hooks[0]).type, 'http');
+  assert.equal((stop[1] as { hooks: Record<string, unknown>[] }).hooks[0].type, 'http');
   assert.deepEqual(twice.permissions, existing.permissions);
   const pre = (twice.hooks as Record<string, unknown[]>).PreToolUse;
   assert.equal(pre.length, 2);

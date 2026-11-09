@@ -26,7 +26,10 @@ test('placeholders exist for every state, are 16x16 and loop in a sane range', (
 test('anim JSON round-trips exactly', () => {
   const a = placeholders().running;
   const back = fromAnimFile(toAnimFile(a));
-  assert.deepEqual(back.frames.map((f) => f.ms), a.frames.map((f) => f.ms));
+  assert.deepEqual(
+    back.frames.map((f) => f.ms),
+    a.frames.map((f) => f.ms),
+  );
   assert.deepEqual(back.frames[2].pixels, a.frames[2].pixels);
 });
 
@@ -38,8 +41,11 @@ test('PNG strips import, write, and load as a full set', () => {
     const png = new PNG({ width: 16 * n, height: 16 });
     for (let i = 0; i < n; i++) {
       // one coloured pixel per frame at (i, i); everything else transparent
-      const idx = ((i) * png.width + (i * 16 + i)) * 4;
-      png.data[idx] = 255; png.data[idx + 1] = 128; png.data[idx + 2] = 0; png.data[idx + 3] = 255;
+      const idx = (i * png.width + (i * 16 + i)) * 4;
+      png.data[idx] = 255;
+      png.data[idx + 1] = 128;
+      png.data[idx + 2] = 0;
+      png.data[idx + 3] = 255;
     }
     writeFileSync(join(dir, `${s}.png`), PNG.sync.write(png));
   }

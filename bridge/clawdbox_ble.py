@@ -31,11 +31,11 @@ import threading
 import time
 
 try:
-    from divoom_protocol import DivoomClient, aa_frame, commands
     from bleak.exc import BleakError
+    from divoom_protocol import DivoomClient, aa_frame, commands
 except ImportError as e:  # pragma: no cover
-    sys.stdout.write(json.dumps({"ev": "error", "fatal": True,
-                                 "message": f"divoom-protocol not installed ({e}); run: pip install -r bridge/requirements.txt"}) + "\n")
+    msg = f"divoom-protocol not installed ({e}); run: pip install -r bridge/requirements.txt"
+    sys.stdout.write(json.dumps({"ev": "error", "fatal": True, "message": msg}) + "\n")
     sys.stdout.flush()
     sys.exit(2)
 
@@ -73,7 +73,7 @@ class Bridge:
                     log("scanning for a Divoom/TimeBox BLE device (6s)...")
                     found = await DivoomClient.scan(timeout=6.0)
                     if not found:
-                        raise RuntimeError("no Divoom BLE device found; is the phone's Bluetooth off and the box powered?")
+                        raise RuntimeError("no Divoom BLE device found; is the phone's Bluetooth off and the box on?")
                     addr, name = found[0]
                     log(f"found {name} @ {addr}")
                     self.address = addr
@@ -85,24 +85,24 @@ class Bridge:
                     await self.client.set_brightness(self.brightness)
                 emit(ev="connected", address=self.address)
                 return
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - any failure here means "retry"
                 emit(ev="error", message=f"connect failed: {type(e).__name__}: {e}; retry in {backoff}s")
-                try:
-                    if self.client:
-                        await self.client.disconnect()
-                except Exception:
-                    pass
-                self.client = None
+                await self._drop_client()
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30)
 
-    async def reconnect(self):
+    async def _drop_client(self):
+        """Disconnect if we can; the link may already be dead, which is fine."""
+        client, self.client = self.client, None
+        if client is None:
+            return
         try:
-            if self.client:
-                await self.client.disconnect()
-        except Exception:
-            pass
-        self.client = None
+            await asyncio.wait_for(client.disconnect(), timeout=3)
+        except (BleakError, OSError, asyncio.TimeoutError) as e:
+            log(f"disconnect ignored: {type(e).__name__}: {e}")
+
+    async def reconnect(self):
+        await self._drop_client()
         await self.connect()
         if self.mode == "slots" and self.preloaded:
             log("re-uploading slots after reconnect")
@@ -123,8 +123,10 @@ class Bridge:
             self.stream_task.cancel()
             try:
                 await self.stream_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except (BleakError, OSError, RuntimeError) as e:
+                log(f"stream task ended with {type(e).__name__}: {e}")
             self.stream_task = None
 
     def encode_chunks(self, slot, frames):
@@ -143,7 +145,7 @@ class Bridge:
             slot = self.slot + i
             self.slot_of[name] = slot
             chunks = self.encode_chunks(slot, frames)
-            await self.with_retry(lambda: self.client.upload_animation(slot, chunks))
+            await self.with_retry(lambda slot=slot, chunks=chunks: self.client.upload_animation(slot, chunks))
             log(f"preloaded {name} into slot {slot}")
             await asyncio.sleep(0.3)
         if announce:
@@ -225,14 +227,10 @@ class Bridge:
                         emit(ev="pong", re="ping", connected=self.client is not None)
                     else:
                         emit(ev="error", re=op, message=f"unknown op {op}")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - report every op failure to the daemon, keep serving
                     emit(ev="error", re=op, message=f"{op} failed: {type(e).__name__}: {e}")
         await self.stop_stream()
-        if self.client:
-            try:
-                await asyncio.wait_for(self.client.disconnect(), timeout=3)
-            except Exception:
-                pass
+        await self._drop_client()
 
 
 async def scan_only():
@@ -256,12 +254,13 @@ def watch_parent():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--address", help="BLE address (CoreBluetooth UUID on macOS). Default: scan and take the first Divoom/TimeBox.")
+    ap.add_argument("--address", help="BLE address (CoreBluetooth UUID on macOS); default: scan for a Divoom/TimeBox")
     ap.add_argument("--mode", choices=["upload", "stream", "slots"], default="stream")
     ap.add_argument("--slot", type=int, default=0)
     ap.add_argument("--brightness", type=int)
     ap.add_argument("--scan", action="store_true", help="list devices and exit")
-    ap.add_argument("--select", default="4505", help="hex bytes sent before the slot number in slots mode (default 4505; 4504 = Signal presets)")
+    ap.add_argument("--select", default="4505",
+                    help="slots mode: hex bytes sent before the slot number (4504 = Signal presets)")
     a = ap.parse_args()
     if a.scan:
         asyncio.run(scan_only())

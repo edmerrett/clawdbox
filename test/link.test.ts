@@ -8,8 +8,20 @@ test('sameAddress ignores case and separators', () => {
 });
 
 test('pickSppChannel prefers the service named SPP/serial over hands-free', () => {
-  assert.equal(pickSppChannel([{ name: 'Hands-Free unit', channel: 1 }, { name: 'JL_SPP', channel: 2 }]), 2);
+  assert.equal(
+    pickSppChannel([
+      { name: 'Hands-Free unit', channel: 1 },
+      { name: 'JL_SPP', channel: 2 },
+    ]),
+    2,
+  );
   assert.equal(pickSppChannel([{ name: 'Serial Port', channel: 3 }]), 3);
-  assert.equal(pickSppChannel([{ name: 'Hands-Free unit', channel: 1 }, { name: 'Advanced Audio', channel: 0 }]), undefined);
+  assert.equal(
+    pickSppChannel([
+      { name: 'Hands-Free unit', channel: 1 },
+      { name: 'Advanced Audio', channel: 0 },
+    ]),
+    undefined,
+  );
   assert.equal(pickSppChannel([]), undefined);
 });

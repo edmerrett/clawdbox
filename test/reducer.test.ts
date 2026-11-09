@@ -19,7 +19,10 @@ test('subagent events are ignored', () => {
 });
 
 test('notifications: permission prompts need you, idle_prompt goes idle, others ignored', () => {
-  assert.deepEqual(classify({ hook_event_name: 'Notification', notification_type: 'permission_prompt' }), { kind: 'set', state: 'needs-you' });
+  assert.deepEqual(classify({ hook_event_name: 'Notification', notification_type: 'permission_prompt' }), {
+    kind: 'set',
+    state: 'needs-you',
+  });
   assert.deepEqual(classify({ hook_event_name: 'Notification', notification_type: 'idle_prompt' }), { kind: 'set', state: 'idle' });
   assert.equal(classify({ hook_event_name: 'Notification', notification_type: 'auth_success' }).kind, 'ignore');
 });
@@ -53,7 +56,10 @@ test('flashes: wave on startup, heart on thanks, done after a long turn, error o
   assert.equal(r.apply({ session_id: 's', hook_event_name: 'Stop' }, 5000).flash, undefined, 'short turn: no celebration');
   r.apply({ session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'refactor everything' }, 10_000);
   assert.equal(r.apply({ session_id: 's', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash' }, 12_000).flash, 'error');
-  assert.equal(r.apply({ session_id: 's', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', is_interrupt: true }, 12_500).flash, undefined);
+  assert.equal(
+    r.apply({ session_id: 's', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', is_interrupt: true }, 12_500).flash,
+    undefined,
+  );
   assert.equal(r.apply({ session_id: 's', hook_event_name: 'Stop' }, 25_000).flash, 'done');
 });
 
@@ -77,6 +83,6 @@ test('needs-you in any session wins; pruning drops stale sessions', () => {
   assert.equal(r.aggregate(), 'needs-you');
   r.apply({ session_id: 'b', hook_event_name: 'Stop' }, 2000);
   assert.equal(r.aggregate(), 'running');
-  assert.deepEqual(r.prune(62_000, 60_000), ["a"]);
+  assert.deepEqual(r.prune(62_000, 60_000), ['a']);
   assert.equal(r.aggregate(), 'idle');
 });

@@ -7,7 +7,17 @@ import { execSync } from 'node:child_process';
 import { DEFAULT_CONFIG, repoRoot, runDaemon } from './daemon/main.js';
 import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
-import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath, appBundleFiles, appBundlePath, writeAppBundle } from './tools/install.js';
+import {
+  installHooks,
+  uninstallHooks,
+  launchdPlist,
+  launchdPlistPath,
+  LAUNCHD_LABEL,
+  settingsPath,
+  appBundleFiles,
+  appBundlePath,
+  writeAppBundle,
+} from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
 import { BtPairedDevice, Link, MockLink, RfcommLink, SerialLink, pickSppChannel } from './daemon/link.js';
 import { readdirSync } from 'node:fs';
@@ -107,7 +117,8 @@ async function main() {
         minHoldMs: num(v['hold-ms'], DEFAULT_CONFIG.minHoldMs),
         idleAfterMs: num(v['idle-ms'], DEFAULT_CONFIG.idleAfterMs),
         idleStageAfterMs: v['coffee-min'] !== undefined ? Number(v['coffee-min']) * 60_000 : DEFAULT_CONFIG.idleStageAfterMs,
-        idleStageCycleMs: v['coffee-min'] !== undefined ? Math.max(60_000, Number(v['coffee-min']) * 60_000) : DEFAULT_CONFIG.idleStageCycleMs,
+        idleStageCycleMs:
+          v['coffee-min'] !== undefined ? Math.max(60_000, Number(v['coffee-min']) * 60_000) : DEFAULT_CONFIG.idleStageCycleMs,
         flashMs: num(v['flash-ms'], DEFAULT_CONFIG.flashMs),
         verbose: v.verbose,
       });
@@ -173,7 +184,10 @@ async function main() {
       mkdirSync(join(path, '..'), { recursive: true });
       writeFileSync(path, plist);
       try {
-        execSync(`launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL} 2>/dev/null; launchctl bootstrap gui/$(id -u) "${path}"`, { stdio: 'inherit', shell: '/bin/bash' });
+        execSync(`launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL} 2>/dev/null; launchctl bootstrap gui/$(id -u) "${path}"`, {
+          stdio: 'inherit',
+          shell: '/bin/bash',
+        });
       } catch {
         console.warn('launchctl bootstrap failed; load it manually with: launchctl bootstrap gui/$(id -u) ' + path);
       }
@@ -213,7 +227,10 @@ async function main() {
             const svc = (d.services ?? []).filter((s) => s.channel > 0);
             const spp = pickSppChannel(svc);
             console.log(`${d.address}  ${d.name}`);
-            for (const s of svc) console.log(`    channel ${s.channel}  ${s.name ?? '(unnamed)'}${s.channel === spp ? '   <- serial port, will be used' : ''}`);
+            for (const s of svc)
+              console.log(
+                `    channel ${s.channel}  ${s.name ?? '(unnamed)'}${s.channel === spp ? '   <- serial port, will be used' : ''}`,
+              );
             if (svc.length && !spp) console.log('    (no service named SPP/serial; pass --channel to pick one)');
           }
           if (!devices.length) console.log('no paired devices; pair the Timebox in System Settings > Bluetooth first');
@@ -333,7 +350,16 @@ function bleMode(): 'upload' | 'stream' | 'slots' {
 /** Build a display from --ble / --mock / --serial / --mac. */
 function makeDisplay(log: (m: string) => void): Display {
   const brightness = v.brightness ? Number(v.brightness) : DEFAULT_CONFIG.brightness;
-  if (v.ble) return new BleDisplay({ address: v.address, mode: bleMode(), select: v.select, brightness, python: v.python, repoRoot: repoRoot(), log });
+  if (v.ble)
+    return new BleDisplay({
+      address: v.address,
+      mode: bleMode(),
+      select: v.select,
+      brightness,
+      python: v.python,
+      repoRoot: repoRoot(),
+      log,
+    });
   return new Device(makeLink(), { log, brightness });
 }
 
