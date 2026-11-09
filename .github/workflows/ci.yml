@@ -60,7 +60,7 @@ jobs:
         run: |
           node dist/cli.js daemon --mock --port 7676 > daemon.log 2>&1 &
           for i in $(seq 1 50); do curl -sf http://127.0.0.1:7676/health >/dev/null && break; sleep 0.2; done
-          APP=build/Clawdbar.app/Contents/MacOS/Clawdbar
+          APP=menubar/build/Clawdbar.app/Contents/MacOS/Clawdbar
           echo "--- initial"; "$APP" --check | tee check1.txt
           grep -q '^connected: true' check1.txt
           grep -q '^transport: mock' check1.txt
