@@ -4,6 +4,8 @@ import { Anim, State, loopMs } from '../anim/types.js';
 import { loadAnimSet } from '../anim/load.js';
 import { clawdSprites } from '../anim/clawd.js';
 import { Device } from './device.js';
+import { BleDisplay } from './ble-display.js';
+import { Display } from './display.js';
 import { Link, MockLink, RfcommLink, SerialLink } from './link.js';
 import { HookEvent, Reducer } from './reducer.js';
 import { DEFAULT_SCHEDULER, Scheduler } from './scheduler.js';
@@ -12,6 +14,11 @@ import { startServer } from './server.js';
 export interface DaemonConfig {
   mac?: string;
   serial?: string;
+  /** Newer Evo generation: drive it over BLE via the Python bridge. */
+  ble?: boolean;
+  bleAddress?: string;
+  bleMode?: 'upload' | 'stream';
+  python?: string;
   channel?: number;
   mock: boolean;
   port: number;
@@ -52,14 +59,19 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     log('using built-in Clawd sprites (pass --anims <dir> for your own)');
   }
 
-  let link: Link;
-  if (cfg.mock) link = new MockLink(cfg.verbose);
-  else if (cfg.serial) link = new SerialLink(cfg.serial, log);
-  else {
-    if (!cfg.mac) throw new Error('--mac XX:XX:XX:XX:XX:XX or --serial /dev/cu.… is required (or --mock). Run "clawdbox discover".');
-    link = new RfcommLink(cfg.mac, cfg.channel, 15_000, log);
+  let device: Display;
+  if (cfg.ble) {
+    device = new BleDisplay({ address: cfg.bleAddress, mode: cfg.bleMode, brightness: cfg.brightness, python: cfg.python, repoRoot: repoRoot(), log });
+  } else {
+    let link: Link;
+    if (cfg.mock) link = new MockLink(cfg.verbose);
+    else if (cfg.serial) link = new SerialLink(cfg.serial, log);
+    else {
+      if (!cfg.mac) throw new Error('--ble, --mac XX:XX:XX:XX:XX:XX or --serial /dev/cu.… is required (or --mock). Run "clawdbox discover".');
+      link = new RfcommLink(cfg.mac, cfg.channel, 15_000, log);
+    }
+    device = new Device(link, { brightness: cfg.brightness, log });
   }
-  const device = new Device(link, { brightness: cfg.brightness, log });
   device.prepare(anims);
 
   const reducer = new Reducer();
@@ -96,7 +108,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         pending: sched.pending,
         forced,
         sessions: Object.fromEntries([...reducer.sessions].map(([k, v]) => [k, v])),
-        device: { label: link.label, connected: device.connected, pushes: device.pushes, replies: device.replies, lastError: device.lastError },
+        device: { label: device.label, connected: device.connected, pushes: device.pushes, lastError: device.lastError },
         uptimeSec: Math.round(process.uptime()),
       }),
       previewHtmlPath,

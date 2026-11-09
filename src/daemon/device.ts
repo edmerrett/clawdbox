@@ -5,13 +5,17 @@
 import { Anim, State } from '../anim/types.js';
 import { encodeAnimation, encodeBrightness, MAX_MSGS_PER_SEC } from '../protocol/divoom.js';
 import { Link } from './link.js';
+import { Display } from './display.js';
 
 export interface DeviceOptions {
   brightness?: number;
   log?: (msg: string) => void;
 }
 
-export class Device {
+export class Device implements Display {
+  get label(): string {
+    return this.link.label;
+  }
   private encoded = new Map<State, Buffer[]>();
   private queue: Promise<void> = Promise.resolve();
   private connecting: Promise<void> | null = null;

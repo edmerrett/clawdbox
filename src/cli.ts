@@ -14,22 +14,27 @@ import { readdirSync } from 'node:fs';
 import { encodeBrightness, encodeGetSettings, encodeImage } from './protocol/divoom.js';
 import { Rgb, PIXELS } from './anim/types.js';
 import { Device } from './daemon/device.js';
+import { BleDisplay, resolvePython } from './daemon/ble-display.js';
+import { Display } from './daemon/display.js';
 import { loadAnimSet } from './anim/load.js';
 
 const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
-  clawdbox daemon [--mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock] [--anims DIR] [--port 7676] [--brightness 0-100]
-                  [--hold-ms 2000] [--idle-ms 90000] [--channel N] [-v]
-  clawdbox discover                 list paired Bluetooth devices (needs bluetooth-serial-port)
-  clawdbox send <state> (--mac MAC | --serial DEV)   push one animation and exit (smoke test)
+  clawdbox daemon (--ble [--address UUID] [--stream] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
+                  [--anims DIR] [--port 7676] [--brightness 0-100] [--hold-ms 2000] [--idle-ms 90000] [-v]
+      --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
+      --mac      original Timebox Evo (Bluetooth Classic serial)
+  clawdbox discover                 list paired Bluetooth Classic devices (needs bluetooth-serial-port)
+  clawdbox ble-scan                 list Divoom BLE devices (needs the Python bridge deps)
+  clawdbox send <state> (--ble | --mac MAC | --serial DEV)   push one animation and exit (smoke test)
   clawdbox diag (--mac MAC | --serial DEV)           step through brightness, still image, animation; log replies
   clawdbox scan --mac MAC [LAST]                     try RFCOMM channels 1..LAST (default 30) and report which one answers
   clawdbox sprites [--out art/anims]                 write the built-in Clawd sprites as JSON
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
   clawdbox install-hooks [--url http://127.0.0.1:7676/event] [--http]   merge hooks into ~/.claude/settings.json
   clawdbox uninstall-hooks
-  clawdbox install-launchd --mac MAC [--anims DIR] [--brightness N]     write + load ~/Library/LaunchAgents/${LAUNCHD_LABEL}.plist
+  clawdbox install-launchd (--ble | --mac MAC) [--anims DIR] [--brightness N]   write + load ~/Library/LaunchAgents/${LAUNCHD_LABEL}.plist
   clawdbox uninstall-launchd
   clawdbox show <state> [--port 7676]                tell a running daemon to show a state (testing)
 
@@ -41,6 +46,10 @@ const { values: v, positionals } = parseArgs({
   options: {
     mac: { type: 'string' },
     serial: { type: 'string' },
+    ble: { type: 'boolean', default: false },
+    address: { type: 'string' },
+    stream: { type: 'boolean', default: false },
+    python: { type: 'string' },
     channel: { type: 'string' },
     mock: { type: 'boolean', default: false },
     anims: { type: 'string' },
@@ -76,6 +85,10 @@ async function main() {
         ...DEFAULT_CONFIG,
         mac: v.mac,
         serial: v.serial,
+        ble: v.ble,
+        bleAddress: v.address,
+        bleMode: v.stream ? 'stream' : 'upload',
+        python: v.python,
         channel: v.channel ? Number(v.channel) : undefined,
         mock: v.mock,
         port,
@@ -117,13 +130,20 @@ async function main() {
       return;
 
     case 'install-launchd': {
-      if (!v.mac) throw new Error('--mac is required');
+      if (!v.mac && !v.ble && !v.serial) throw new Error('--ble, --mac or --serial is required');
       if (process.platform !== 'darwin') throw new Error('install-launchd is macOS only');
       const logDir = join(homedir(), 'Library', 'Logs', 'clawdbox');
       mkdirSync(logDir, { recursive: true });
       const cli = join(repoRoot(), 'dist', 'cli.js');
       if (!existsSync(cli)) throw new Error('run "npm run build" first so dist/cli.js exists');
-      const args = ['--mac', v.mac];
+      const args: string[] = [];
+      if (v.ble) {
+        args.push('--ble');
+        if (v.address) args.push('--address', v.address);
+        if (v.stream) args.push('--stream');
+        args.push('--python', resolvePython(repoRoot(), v.python));
+      } else if (v.serial) args.push('--serial', v.serial);
+      else args.push('--mac', v.mac!);
       const anims = defaultAnims();
       if (anims) args.push('--anims', anims);
       if (v.brightness) args.push('--brightness', v.brightness);
@@ -182,15 +202,25 @@ async function main() {
     case 'send': {
       const state = positionals[1];
       if (!state || !isState(state)) throw new Error(`send needs a state: ${STATES.join(', ')}`);
-      const link = makeLink();
-      const device = new Device(link, { log: console.log, brightness: v.brightness ? Number(v.brightness) : undefined });
+      const device = makeDisplay(console.log);
       const dir = defaultAnims();
       device.prepare(dir ? loadAnimSet(dir) : clawdSprites());
       await device.show(state);
       // give the box a moment to finish parsing before we hang up
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, v.ble ? 3000 : 800));
       device.close();
       console.log('done');
+      return;
+    }
+
+    case 'ble-scan': {
+      const python = resolvePython(repoRoot(), v.python);
+      const { spawn } = await import('node:child_process');
+      await new Promise<void>((done) => {
+        const p = spawn(python, [join(repoRoot(), 'bridge', 'clawdbox_ble.py'), '--scan'], { stdio: ['ignore', 'pipe', 'inherit'] });
+        p.stdout.on('data', (d: Buffer) => process.stdout.write(d));
+        p.on('exit', () => done());
+      });
       return;
     }
 
@@ -270,6 +300,12 @@ async function main() {
       console.log(HELP);
       process.exitCode = 1;
   }
+}
+
+/** Build a display from --ble / --mock / --serial / --mac. */
+function makeDisplay(log: (m: string) => void): Display {
+  if (v.ble) return new BleDisplay({ address: v.address, mode: v.stream ? 'stream' : 'upload', brightness: v.brightness ? Number(v.brightness) : undefined, python: v.python, repoRoot: repoRoot(), log });
+  return new Device(makeLink(), { log, brightness: v.brightness ? Number(v.brightness) : undefined });
 }
 
 /** Build the device link from --mock / --serial / --mac. */

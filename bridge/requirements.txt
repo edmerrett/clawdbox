@@ -1,0 +1,1 @@
+divoom-protocol>=0.2.0

@@ -12,25 +12,44 @@ Claude Code ──hook──▶ POST http://127.0.0.1:7676/event ──▶ clawd
                                                            └─ device    one persistent RFCOMM socket, pre-encoded animations, ≤25 msgs/s
 ```
 
+## Which Evo do you have?
+Divoom shipped two very different devices under the TimeBox Evo name, and both pair as a Bluetooth speaker:
+
+| | Original Timebox Evo (2018–~2023) | Newer TimeBox-Evo-audio / Backpack M (Anyka SoC) |
+|---|---|---|
+| Speaker shows up as | `Timebox-Evo-audio` | `TimeBox-Evo-audio` (capital B) |
+| Display protocol | Bluetooth Classic serial (RFCOMM), `01 … 02` packets | **Bluetooth Low Energy**, `FE EF AA 55` envelope, 30-command handshake |
+| Its Classic serial port | drives the display | accepts bytes and ignores them |
+| clawdbox flag | `--mac XX:XX:…` | `--ble` |
+
+If `clawdbox diag --mac …` connects but the panel never changes and the box never replies, you have the newer one: use `--ble`.
+
 ## Requirements
-- macOS (Linux works too; the Bluetooth library supports both). Node 20+.
-- An **original TimeBox Evo**: pairs like a Bluetooth speaker. The later BLE-only revision uses a different protocol and is not supported.
-- Xcode command line tools (`xcode-select --install`) if a prebuilt `bluetooth-serial-port` binary is not available for your Node version.
+- macOS (Linux works too). Node 20+.
+- **Newer Evo (`--ble`)**: Python 3.10+ and the [divoom-protocol](https://github.com/orionparrott/divoom-protocol) package, installed into a venv in this folder:
+  ```bash
+  python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt
+  ```
+  On macOS run clawdbox from **Terminal.app or iTerm2**: macOS only grants Bluetooth to processes launched by an app that declares it, and Python spawned from some other tools is killed on its first BLE call.
+- **Original Evo (`--mac`)**: Xcode command line tools (`xcode-select --install`) if a prebuilt `bluetooth-serial-port` binary is not available for your Node version.
 
 ## Quick start (Mac)
 ```bash
 git clone https://github.com/edmerrett/clawdbox && cd clawdbox
 npm install && npm run build
 ```
-1. **Pair** the Timebox in System Settings → Bluetooth. Quit the Divoom phone app; the box accepts one client at a time.
-2. **Find its address**:
+1. **Pair** the Timebox in System Settings → Bluetooth. Turn the phone's Bluetooth **off**: the Divoom app reconnects to the box whenever it sees it, and the box accepts one controller at a time.
+2. **Smoke test** one animation on the device.
+   Newer Evo (BLE): the bridge scans for the box itself, connects, runs the ~3 s handshake, and uploads the loop:
+   ```bash
+   node dist/cli.js send writing --ble
+   ```
+   Original Evo (Classic): find the address, then send:
    ```bash
    node dist/cli.js discover
+   node dist/cli.js send writing --mac XX:XX:XX:XX:XX:XX
    ```
-3. **Smoke test** one animation on the device:
-   ```bash
-   node dist/cli.js send running --mac XX:XX:XX:XX:XX:XX
-   ```
+   In the examples below, replace `--ble` with `--mac XX:…` for the original.
    **macOS gotcha.** When the Mac auto-connects the paired speaker it also opens the Evo's real serial channel
    itself and exposes it as a device file such as `/dev/cu.Timebox-Evo-audio`. A fresh Bluetooth open from our
    side then lands on a second, dead endpoint: it "connects", accepts bytes, and nothing renders. Two ways out:
@@ -39,18 +58,18 @@ npm install && npm run build
    - **Or free the channel**: power-cycle the Timebox and run the command within a few seconds of it reconnecting.
    `clawdbox diag` steps through brightness, still images and an animation and reports replies from the box,
    which tells you immediately whether you are on a live channel.
-4. **Run the daemon** and open the previewer at <http://127.0.0.1:7676>:
+3. **Run the daemon** and open the previewer at <http://127.0.0.1:7676>:
    ```bash
-   node dist/cli.js daemon --mac XX:XX:XX:XX:XX:XX -v
+   node dist/cli.js daemon --ble -v
    ```
-5. **Install the hooks** (merges into `~/.claude/settings.json`, keeps your existing hooks, backs the file up first):
+4. **Install the hooks** (merges into `~/.claude/settings.json`, keeps your existing hooks, backs the file up first):
    ```bash
    node dist/cli.js install-hooks
    ```
    Start a Claude Code session and watch the character change as Claude works.
-6. **Run it at login** as a launchd agent that restarts itself:
+5. **Run it at login** as a launchd agent that restarts itself:
    ```bash
-   node dist/cli.js install-launchd --mac XX:XX:XX:XX:XX:XX
+   node dist/cli.js install-launchd --ble
    ```
    Logs land in `~/Library/Logs/clawdbox/`.
 
@@ -86,7 +105,11 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 
 ## Daemon options
 ```
---mac XX:XX:XX:XX:XX:XX   device address (required unless --serial or --mock)
+--ble                     newer Evo over BLE via bridge/clawdbox_ble.py (Python + divoom-protocol)
+--address UUID            BLE address from "clawdbox ble-scan" (default: scan and take the first Divoom/TimeBox)
+--stream                  BLE: push stills at the frame rate instead of uploading the loop to the panel (see below)
+--python PATH             interpreter for the bridge (default .venv/bin/python, else python3)
+--mac XX:XX:XX:XX:XX:XX   original Evo: device address (required unless --ble, --serial or --mock)
 --serial /dev/cu.NAME     use the OS serial device for the paired Evo instead of opening RFCOMM ourselves
 --channel N               RFCOMM channel; auto-detected via SDP, falls back to 1
 --anims DIR               animation directory (default art/anims if present, else placeholders)
@@ -97,6 +120,14 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 -v                        log every event
 ```
 HTTP API: `POST /event` (hook JSON → 204), `GET /state`, `GET /anims`, `POST /show/<state>` (force, for testing), `GET /` previewer.
+
+## BLE notes (newer Evo)
+`--ble` uploads each state's loop to the panel with the `0x8b` animation command and lets the panel play it on
+its own, so a held state costs no Bluetooth traffic and plays at the panel's full frame rate. Upload takes roughly a
+second. divoom-protocol has not confirmed whether these uploads also write the panel's flash; if you would rather not
+find out the hard way, `--stream` pushes `0x44` stills at the frame timing instead (capped around 4 fps, constant
+traffic, nothing stored). The bridge reconnects and re-runs the handshake by itself when the link drops. If the panel
+stops reacting after an unclean disconnect, power-cycle it.
 
 ## Protocol notes
 The encoder (`src/protocol/divoom.ts`) follows RomRider's reverse-engineered
