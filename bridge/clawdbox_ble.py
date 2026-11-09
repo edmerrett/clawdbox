@@ -244,7 +244,7 @@ async def scan_only():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--address", help="BLE address (CoreBluetooth UUID on macOS). Default: scan and take the first Divoom/TimeBox.")
-    ap.add_argument("--mode", choices=["upload", "stream", "slots"], default="upload")
+    ap.add_argument("--mode", choices=["upload", "stream", "slots"], default="stream")
     ap.add_argument("--slot", type=int, default=0)
     ap.add_argument("--brightness", type=int)
     ap.add_argument("--scan", action="store_true", help="list devices and exit")

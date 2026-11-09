@@ -21,10 +21,11 @@ import { loadAnimSet } from './anim/load.js';
 const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
-  clawdbox daemon (--ble [--address UUID] [--stream | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
+  clawdbox daemon (--ble [--address UUID] [--upload | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
                   [--anims DIR] [--port 7676] [--brightness 0-100] [--hold-ms 2000] [--idle-ms 90000] [-v]
       --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
-                 --stream: stills at the frame rate, no transfer screen. --slots: preload all loops, switch by slot
+                 default streams stills at the frame rate. --upload: send the loop per change (shows a transfer screen).
+                 --slots: experimental, preload all loops and switch by slot
                  (--select HEX: bytes before the slot number, default 4505; 4504 selects Divoom's Signal presets)
       --mac      original Timebox Evo (Bluetooth Classic serial)
   clawdbox discover                 list paired Bluetooth Classic devices (needs bluetooth-serial-port)
@@ -51,6 +52,7 @@ const { values: v, positionals } = parseArgs({
     ble: { type: 'boolean', default: false },
     address: { type: 'string' },
     stream: { type: 'boolean', default: false },
+    upload: { type: 'boolean', default: false },
     slots: { type: 'boolean', default: false },
     select: { type: 'string' },
     python: { type: 'string' },
@@ -145,7 +147,7 @@ async function main() {
       if (v.ble) {
         args.push('--ble');
         if (v.address) args.push('--address', v.address);
-        if (v.stream) args.push('--stream');
+        if (v.upload) args.push('--upload');
         if (v.slots) args.push('--slots');
         if (v.select) args.push('--select', v.select);
         args.push('--python', resolvePython(repoRoot(), v.python));
@@ -310,7 +312,7 @@ async function main() {
 }
 
 function bleMode(): 'upload' | 'stream' | 'slots' {
-  return v.slots ? 'slots' : v.stream ? 'stream' : 'upload';
+  return v.slots ? 'slots' : v.upload ? 'upload' : 'stream';
 }
 
 /** Build a display from --ble / --mock / --serial / --mac. */

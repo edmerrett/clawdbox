@@ -54,7 +54,7 @@ export class BleDisplay implements Display {
 
   constructor(private readonly opts: BleOptions) {
     this.log = opts.log ?? (() => {});
-    this.label = `ble ${opts.address ?? '(scan)'} via ${opts.mode ?? 'upload'}`;
+    this.label = `ble ${opts.address ?? '(scan)'} via ${opts.mode ?? 'stream'}`;
   }
 
   prepare(anims: Record<State, Anim>): void {
@@ -66,7 +66,7 @@ export class BleDisplay implements Display {
     if (this.proc || this.closed) return;
     const python = resolvePython(this.opts.repoRoot, this.opts.python);
     const script = join(this.opts.repoRoot, 'bridge', 'clawdbox_ble.py');
-    const args = [script, '--mode', this.opts.mode ?? 'upload'];
+    const args = [script, '--mode', this.opts.mode ?? 'stream'];
     if (this.opts.address) args.push('--address', this.opts.address);
     if (this.opts.brightness !== undefined) args.push('--brightness', String(this.opts.brightness));
     if (this.opts.select) args.push('--select', this.opts.select);

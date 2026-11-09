@@ -126,12 +126,12 @@ Three ways to get frames onto the panel, pick with a flag:
 
 | mode | what happens on a state change | trade-off |
 |---|---|---|
-| `--ble` (upload) | the loop is uploaded (~0.5 s) and the panel plays it | the panel shows its own transfer screen during every upload, which with frequent changes is most of the time |
-| `--ble --slots` | all six loops are uploaded once at startup, then one play-slot command per change | instant and silent, if the firmware honours slot selection for uploaded content (divoom-protocol lists this as unverified) |
-| `--ble --stream` | each frame is pushed as a still at the frame's own timing | no transfer screen, nothing stored; capped around 4 fps and constant BLE traffic |
+| `--ble` (stream, default) | each frame is pushed as a still at the frame's own timing | no transfer screen, nothing stored on the panel; capped around 4 fps and constant BLE traffic |
+| `--ble --upload` | the loop is uploaded (~0.5 s) and the panel plays it | the panel shows its own transfer screen during every upload, which with frequent changes is most of the time |
+| `--ble --slots` | all six loops are uploaded once at startup, then one select command per change | experimental: on the firmware tested, `45 04 N` plays Divoom's Signal presets and `45 06 N` shows an error screen; the opcode that selects an uploaded Custom slot is not yet known (`--select HEX` to experiment) |
 
-divoom-protocol has not confirmed whether uploads write the panel's flash, so prefer `--slots` (six writes per
-daemon start) or `--stream` (none) over plain upload for an always-on toy. The bridge reconnects and re-runs the
+divoom-protocol has not confirmed whether uploads write the panel's flash, which is another reason streaming is
+the default for an always-on toy. The bridge reconnects and re-runs the
 handshake by itself when the link drops, and re-uploads slots after a reconnect. If the panel stops reacting after
 an unclean disconnect, power-cycle it.
 
