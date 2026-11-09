@@ -285,23 +285,20 @@ export function wave(): Anim {
   };
 }
 
-/** Clawd Happy: > < eyes and a little hop. */
+/** Clawd Happy: eyes squeezed shut with joy, a little hop, sparkles around the head. */
 export function done(): Anim {
-  const happy = STAND.map((r) => r.replace(/K/g, 'O'));
+  const sparkles: [number, number][][] = [
+    [[1, 5], [14, 4], [8, 2]],
+    [[2, 3], [13, 6], [6, 1]],
+    [[0, 6], [15, 2], [10, 1]],
+    [[1, 5], [14, 4], [8, 2]],
+  ];
   return {
     name: 'done',
     frames: [0, -1, 0, 0].map((dy, i) =>
       frame(i === 3 ? 400 : 220, (c) => {
-        stand(c, happy, 0, dy);
-        const y = top(STAND) + dy;
-        // > eye
-        c.set(4, y, BLACK);
-        c.set(5, y + 1, BLACK);
-        c.set(4, y + 2, BLACK);
-        // < eye
-        c.set(9, y, BLACK);
-        c.set(8, y + 1, BLACK);
-        c.set(9, y + 2, BLACK);
+        stand(c, CLOSED, 0, dy);
+        for (const [x, y] of sparkles[i]) c.set(x, y, i % 2 ? WHITE : YELLOW);
       }),
     ),
   };
@@ -310,8 +307,8 @@ export function done(): Anim {
 /** Clawd crying: slanted sad eyes, a tear dripping from each, spray off the cheeks, puddle at the feet. */
 export function error(): Anim {
   const TEAR: Rgb = [0x50, 0xb0, 0xff];
-  // Two-row eyes with the top pixel pulled inward: brows down, eyes sad.
-  const sad = STAND.map((r, i) => (i === 0 ? '..OOKOOKOO..' : i === 1 ? '..OKOOOOKO..' : r));
+  // Eyes squeezed shut (flat dashes); the tears carry the emotion.
+  const sad = CLOSED;
   return {
     name: 'error',
     frames: [0, 1, 2, 3].map((i) =>
