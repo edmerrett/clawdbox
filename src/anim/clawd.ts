@@ -45,6 +45,14 @@ const CROUCH = [
   '..O.O..O.O..',
 ];
 
+/** Standing with both eyes shifted left (-1), centred (0) or right (+1): scanning a line of text. */
+function standEyes(shift: -1 | 0 | 1): string[] {
+  const r = 'OOOOOOOOOO'.split('');
+  r[1 + shift] = 'K';
+  r[6 + shift] = 'K';
+  return STAND.map((row, i) => (i === 1 ? `..${r.join('')}..` : row));
+}
+
 /** Standing with eyes shut (a blink). */
 const BLINK = STAND.map((r, i) => (i === 1 ? '..OOOOOOOO..' : r));
 
@@ -109,15 +117,37 @@ export function thinking(): Anim {
 }
 
 export function reading(): Anim {
+  // Clawd faces you holding an open book; eyes scan left to right, then a page turns.
+  const book = (c: Canvas, flipping: boolean) => {
+    const pageL: Rgb = WHITE;
+    const pageR: Rgb = flipping ? [0xb0, 0xb0, 0xb8] : WHITE; // the turning page catches less light
+    // open-book V: the inner edges rise one row toward the spine
+    c.set(6, 9, pageL);
+    c.set(8, 9, pageR);
+    c.rect(2, 10, 5, 3, pageL); // left page  cols 2-6, rows 10-12 (feet stay visible)
+    c.rect(8, 10, 5, 3, pageR); // right page cols 8-12
+    c.rect(7, 9, 1, 4, BLACK); // spine (LEDs off)
+    // lines of text
+    c.rect(3, 11, 3, 1, INK);
+    c.rect(3, 12, 2, 1, INK);
+    if (!flipping) {
+      c.rect(9, 11, 3, 1, INK);
+      c.rect(9, 12, 2, 1, INK);
+    }
+  };
+  const seq: [-1 | 0 | 1, boolean][] = [
+    [-1, false],
+    [0, false],
+    [1, false],
+    [0, true],
+  ];
   return {
     name: 'reading',
-    frames: [0, 1, 2].map((s) =>
-      frame(300, (c) => {
-        const body = sideways(5);
-        c.blit(body, 1, top(body), PAL);
-        // a page held in front, lines of text scrolling
-        c.rect(11, 6, 5, 8, WHITE);
-        for (let line = 0; line < 3; line++) c.rect(12, 7 + ((line * 2 + s) % 6), 3, 1, INK);
+    frames: seq.map(([eyes, flip]) =>
+      frame(flip ? 260 : 340, (c) => {
+        const body = standEyes(eyes);
+        c.blit(body, X, top(body), PAL);
+        book(c, flip);
       }),
     ),
   };
