@@ -12,7 +12,7 @@
 #
 #   --dir PATH        where to keep the checkout (default ~/Tools/clawdbox, or the current checkout)
 #   --mac XX:XX:…     original Timebox Evo over Bluetooth Classic (default is --ble, the newer Evo)
-#   --auto-update     also install a six-hourly updater that follows release tags (off by default)
+#   --no-auto-update  skip the six-hourly updater (on by default; it follows release tags)
 #   --no-hooks        don't touch ~/.claude/settings.json
 #   --no-launchd      don't install the login agent (you run the daemon yourself)
 #   --no-menubar      skip the menu bar app
@@ -24,7 +24,7 @@ set -euo pipefail
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 REPO_URL="https://github.com/edmerrett/clawdbox"
-DIR=""; TRANSPORT=(--ble); HOOKS=1; LAUNCHD=1; MENUBAR=1; AUTOUPDATE=0; BRIGHTNESS=""
+DIR=""; TRANSPORT=(--ble); HOOKS=1; LAUNCHD=1; MENUBAR=1; AUTOUPDATE=1; BRIGHTNESS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) DIR="$2"; shift 2;;
@@ -129,7 +129,7 @@ ARGS=("${TRANSPORT[@]}")
 if [ -n "$BRIGHTNESS" ]; then ARGS+=(--brightness "$BRIGHTNESS"); fi
 if [ "$LAUNCHD" = 1 ]; then
   step "installing the daemon as a login agent"
-  if [ "$AUTOUPDATE" = 1 ]; then ARGS+=(--auto-update); fi
+  if [ "$AUTOUPDATE" = 0 ]; then ARGS+=(--no-auto-update); fi
   node dist/cli.js install-launchd "${ARGS[@]}"
 else
   echo "skipping the login agent; run:  node dist/cli.js daemon ${ARGS[*]} -v"
@@ -187,7 +187,7 @@ clawdbox one-shot installer for macOS
 Options:
   --dir PATH        where to keep the checkout (default ~/Tools/clawdbox, or the current official checkout)
   --mac XX:XX:…     original Timebox Evo over Bluetooth Classic (default is --ble, the newer Evo)
-  --auto-update     also install a six-hourly updater that follows release tags (off by default)
+  --no-auto-update  skip the six-hourly updater (on by default; it follows release tags)
   --no-hooks        don't touch ~/.claude/settings.json
   --no-launchd      don't install the login agent (you run the daemon yourself)
   --no-menubar      skip the menu bar app

@@ -7,7 +7,7 @@
   process can capture prompts or tool inputs by binding the port first. The TCP port serves only the previewer
   and status; `--tcp-events` restores TCP hook delivery for Claude Code's native `http` hooks.
 - Every request must carry a loopback `Host` (defeats DNS rebinding); the previewer sends CSP and `nosniff`.
-- Auto-update is opt-in, follows release tags instead of `main`, installs dependencies with `--ignore-scripts`,
+- Auto-update follows release tags instead of `main` (`--no-auto-update` to skip it), installs dependencies with `--ignore-scripts`,
   builds into a staging directory and rolls back on failure. The Python dependency is pinned.
 - Clawdbar resolves the checkout from its own launchd plist, never from the daemon's response.
 - Hook installer keeps the settings file's mode, protects and later removes its backup, refuses concurrent edits.

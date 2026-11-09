@@ -20,7 +20,8 @@ clawdbox runs entirely on your machine.
   command pins `/usr/bin/curl`. A `.clawdbox.bak` with the original mode is kept until `uninstall-hooks`.
 - **Updates and trust.** `clawdbox update` follows release tags (not `main`), installs Node dependencies with
   `--ignore-scripts`, builds into a staging directory and rolls back on failure. The Python dependency is pinned.
-  Unattended auto-update is **opt-in**; enabling it means trusting whoever can push a `v*` tag to this repository.
+  The six-hourly auto-updater is installed by default (`--no-auto-update` to skip it); keeping it means trusting
+  whoever can push a `v*` tag to this repository, and nothing on `main` reaches an install until it is tagged.
   The daemon's only network egress is one `git ls-remote` of this repository every six hours (`--no-update-check`
   disables it); the updater, when enabled, fetches from GitHub, npm and PyPI.
 - **Menu bar app.** "Install Update…" runs `scripts/update.sh` from the checkout named in the launchd plist the

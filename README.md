@@ -62,8 +62,8 @@ curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh 
 ```
 
 That clones to `~/Tools/clawdbox`, installs the Node and Python dependencies, builds, installs the Claude Code
-hooks, installs the daemon as a login agent, builds and installs the Clawdbar menu bar app, and then waits for
-Clawd to appear on the panel. Re-running it updates everything. Before you run it:
+hooks, installs the daemon as a login agent with a six-hourly release updater, builds and installs the Clawdbar
+menu bar app, and then waits for Clawd to appear on the panel. Re-running it updates everything. Before you run it:
 
 1. **Pair** the Timebox in System Settings → Bluetooth.
 2. Turn the **phone's Bluetooth off**: the Divoom app reconnects to the box whenever it sees it, and the box accepts
@@ -71,7 +71,7 @@ Clawd to appear on the panel. Re-running it updates everything. Before you run i
 3. Run it from **Terminal.app or iTerm2**, which declare Bluetooth usage to macOS.
 
 Original Evo (Bluetooth Classic, see [Which Evo?](#which-evo))? Add `--mac XX:XX:XX:XX:XX:XX`. Pass flags to the
-one-liner with `| bash -s -- --mac …`. Other flags: `--auto-update` (six-hourly updater, off by default),
+one-liner with `| bash -s -- --mac …`. Other flags: `--no-auto-update` (skip the six-hourly release updater),
 `--no-hooks`, `--no-launchd`, `--no-menubar`, `--brightness N`, `--dir PATH`. `uninstall.sh` removes everything
 the installer set up. Prefer to read before you run? `curl -fsSLO …/install.sh && less install.sh && bash install.sh`;
 tagged releases publish a `SHA256SUMS` that covers `install.sh`.
@@ -84,7 +84,7 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # ne
 node dist/cli.js send writing --ble            # smoke test: Clawd types on the panel (original Evo: --mac XX:…)
 node dist/cli.js daemon --ble -v               # run the daemon; previewer at http://127.0.0.1:7676
 node dist/cli.js install-hooks                 # merge hooks into ~/.claude/settings.json (backs it up first)
-node dist/cli.js install-launchd --ble         # login agent (add --auto-update for the six-hourly updater)
+node dist/cli.js install-launchd --ble         # login agent + six-hourly release updater (--no-auto-update to skip)
 menubar/install.sh                             # Clawdbar menu bar app
 ```
 `npm link` puts a `clawdbox` command on your PATH. No panel yet? `npm run dev` runs everything against a mock panel.

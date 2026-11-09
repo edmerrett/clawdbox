@@ -60,8 +60,8 @@ Usage:
   clawdbox install-hooks [--http [--url URL]]        merge hooks into ~/.claude/settings.json (default: async curl to
                                                      the daemon's private Unix socket; --http: Claude Code http hooks)
   clawdbox uninstall-hooks
-  clawdbox install-launchd <daemon flags> [--auto-update]
-                                                     app bundle + login agent; --auto-update adds a ${UPDATE_HOURS}-hourly updater
+  clawdbox install-launchd <daemon flags> [--no-auto-update]
+                                                     app bundle + login agent + ${UPDATE_HOURS}-hourly release updater
   clawdbox uninstall-launchd
   clawdbox update [--check | --force]                update to the newest release tag, rebuild, restart the daemon
   clawdbox show <state> [--port ${PORT}]                tell a running daemon to show a state (testing)
@@ -96,6 +96,7 @@ const OPTIONS = {
   url: { type: 'string' },
   http: { type: 'boolean', default: false },
   'auto-update': { type: 'boolean', default: false },
+  'no-auto-update': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   check: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
@@ -292,8 +293,8 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   if (!launchctl(['bootstrap', domain, path]))
     console.warn(`launchctl bootstrap failed; load it manually with: launchctl bootstrap ${domain} ${path}`);
 
-  // 3. optional updater agent
-  if (v['auto-update']) {
+  // 3. updater agent (on by default; follows release tags, --no-auto-update to skip)
+  if (!v['no-auto-update']) {
     const upath = updaterPlistPath();
     writeFileSync(
       upath,
@@ -312,6 +313,10 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   console.log(`app bundle:    ${appDir}\nlaunchd agent: ${path}\nlogs:          ${logs}`);
   console.log(`\nIf macOS asks whether Clawdbox may use Bluetooth, allow it. Follow along with:  tail -f ${join(logs, 'clawdbox.log')}`);
   console.log(`A daemon still running in a terminal will keep port ${cfg.port}; stop it (Ctrl-C) so the agent can take over.`);
+  if (!v['no-auto-update'])
+    console.log(
+      `Updates install themselves every ${UPDATE_HOURS} h when a new release tag appears (uninstall-launchd or --no-auto-update to stop).`,
+    );
 }
 
 function cmdUninstallLaunchd(): void {
