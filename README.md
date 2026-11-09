@@ -31,7 +31,14 @@ npm install && npm run build
    ```bash
    node dist/cli.js send running --mac XX:XX:XX:XX:XX:XX
    ```
-   If macOS grabbed the speaker's serial channel first, power-cycle the Timebox and try again.
+   **macOS gotcha.** When the Mac auto-connects the paired speaker it also opens the Evo's real serial channel
+   itself and exposes it as a device file such as `/dev/cu.Timebox-Evo-audio`. A fresh Bluetooth open from our
+   side then lands on a second, dead endpoint: it "connects", accepts bytes, and nothing renders. Two ways out:
+   - **Use the device file** (preferred, no native module involved): `discover` lists any `/dev/cu.*` that looks
+     like a Timebox; pass it as `--serial /dev/cu.Timebox-Evo-audio` instead of `--mac` on every command.
+   - **Or free the channel**: power-cycle the Timebox and run the command within a few seconds of it reconnecting.
+   `clawdbox diag` steps through brightness, still images and an animation and reports replies from the box,
+   which tells you immediately whether you are on a live channel.
 4. **Run the daemon** and open the previewer at <http://127.0.0.1:7676>:
    ```bash
    node dist/cli.js daemon --mac XX:XX:XX:XX:XX:XX -v
@@ -79,7 +86,8 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 
 ## Daemon options
 ```
---mac XX:XX:XX:XX:XX:XX   device address (required unless --mock)
+--mac XX:XX:XX:XX:XX:XX   device address (required unless --serial or --mock)
+--serial /dev/cu.NAME     use the OS serial device for the paired Evo instead of opening RFCOMM ourselves
 --channel N               RFCOMM channel; auto-detected via SDP, falls back to 1
 --anims DIR               animation directory (default art/anims if present, else placeholders)
 --brightness 0-100        set panel brightness on connect

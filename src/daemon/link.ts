@@ -189,3 +189,68 @@ export class RfcommLink extends EventEmitter implements Link {
     this.open = false;
   }
 }
+
+/**
+ * Transport via the OS-provided serial device (macOS creates /dev/cu.<Name>-<Service>
+ * for a paired SPP device; Linux can bind one with `rfcomm bind`). When macOS already
+ * holds the Evo's SPP channel this is the only way in, and it needs no native module.
+ */
+export class SerialLink extends EventEmitter implements Link {
+  private fh: import('node:fs/promises').FileHandle | null = null;
+  open = false;
+  readonly label: string;
+
+  constructor(
+    private readonly path: string,
+    private readonly log: (m: string) => void = () => {},
+  ) {
+    super();
+    this.label = `serial ${path}`;
+  }
+
+  async connect(): Promise<void> {
+    const fs = await import('node:fs/promises');
+    const { execFile } = await import('node:child_process');
+    // raw mode: no line discipline, no echo, no CR/LF translation
+    await new Promise<void>((resolve) => {
+      const args = process.platform === 'darwin' ? ['-f', this.path, 'raw', '-echo'] : ['-F', this.path, 'raw', '-echo'];
+      execFile('stty', args, (err) => {
+        if (err) this.log(`stty failed (${err.message}); continuing`);
+        resolve();
+      });
+    });
+    this.fh = await fs.open(this.path, 'r+');
+    this.open = true;
+    void this.readLoop();
+  }
+
+  private async readLoop(): Promise<void> {
+    const fh = this.fh;
+    if (!fh) return;
+    const buf = Buffer.alloc(1024);
+    try {
+      while (this.open && this.fh === fh) {
+        const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+        if (bytesRead > 0) this.emit('data', Buffer.from(buf.subarray(0, bytesRead)));
+        else if (bytesRead === 0) await new Promise((r) => setTimeout(r, 50));
+      }
+    } catch (e) {
+      if (this.open) {
+        this.open = false;
+        this.emit('closed', e as Error);
+      }
+    }
+  }
+
+  async write(buf: Buffer): Promise<void> {
+    if (!this.fh || !this.open) throw new Error('serial link not open');
+    await this.fh.write(buf);
+  }
+
+  close(): void {
+    const fh = this.fh;
+    this.fh = null;
+    this.open = false;
+    void fh?.close().catch(() => {});
+  }
+}

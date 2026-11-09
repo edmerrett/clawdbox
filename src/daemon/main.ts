@@ -4,13 +4,14 @@ import { Anim, State, loopMs } from '../anim/types.js';
 import { loadAnimSet } from '../anim/load.js';
 import { clawdSprites } from '../anim/clawd.js';
 import { Device } from './device.js';
-import { Link, MockLink, RfcommLink } from './link.js';
+import { Link, MockLink, RfcommLink, SerialLink } from './link.js';
 import { HookEvent, Reducer } from './reducer.js';
 import { DEFAULT_SCHEDULER, Scheduler } from './scheduler.js';
 import { startServer } from './server.js';
 
 export interface DaemonConfig {
   mac?: string;
+  serial?: string;
   channel?: number;
   mock: boolean;
   port: number;
@@ -53,8 +54,9 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
 
   let link: Link;
   if (cfg.mock) link = new MockLink(cfg.verbose);
+  else if (cfg.serial) link = new SerialLink(cfg.serial, log);
   else {
-    if (!cfg.mac) throw new Error('--mac XX:XX:XX:XX:XX:XX is required (or --mock). Run "clawdbox discover" to find it.');
+    if (!cfg.mac) throw new Error('--mac XX:XX:XX:XX:XX:XX or --serial /dev/cu.… is required (or --mock). Run "clawdbox discover".');
     link = new RfcommLink(cfg.mac, cfg.channel, 15_000, log);
   }
   const device = new Device(link, { brightness: cfg.brightness, log });

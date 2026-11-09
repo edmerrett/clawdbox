@@ -9,7 +9,8 @@ import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
 import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath } from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
-import { BtPairedDevice, MockLink, RfcommLink, pickSppChannel } from './daemon/link.js';
+import { BtPairedDevice, Link, MockLink, RfcommLink, SerialLink, pickSppChannel } from './daemon/link.js';
+import { readdirSync } from 'node:fs';
 import { encodeBrightness, encodeGetSettings, encodeImage } from './protocol/divoom.js';
 import { Rgb, PIXELS } from './anim/types.js';
 import { Device } from './daemon/device.js';
@@ -18,11 +19,11 @@ import { loadAnimSet } from './anim/load.js';
 const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
-  clawdbox daemon [--mac XX:XX:XX:XX:XX:XX | --mock] [--anims DIR] [--port 7676] [--brightness 0-100]
+  clawdbox daemon [--mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock] [--anims DIR] [--port 7676] [--brightness 0-100]
                   [--hold-ms 2000] [--idle-ms 90000] [--channel N] [-v]
   clawdbox discover                 list paired Bluetooth devices (needs bluetooth-serial-port)
-  clawdbox send <state> --mac MAC [--anims DIR]      push one animation and exit (smoke test)
-  clawdbox diag --mac MAC [--channel N]              step through brightness, still image, animation; log replies
+  clawdbox send <state> (--mac MAC | --serial DEV)   push one animation and exit (smoke test)
+  clawdbox diag (--mac MAC | --serial DEV)           step through brightness, still image, animation; log replies
   clawdbox scan --mac MAC [LAST]                     try RFCOMM channels 1..LAST (default 30) and report which one answers
   clawdbox sprites [--out art/anims]                 write the built-in Clawd sprites as JSON
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
@@ -39,6 +40,7 @@ const { values: v, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     mac: { type: 'string' },
+    serial: { type: 'string' },
     channel: { type: 'string' },
     mock: { type: 'boolean', default: false },
     anims: { type: 'string' },
@@ -73,6 +75,7 @@ async function main() {
       await runDaemon({
         ...DEFAULT_CONFIG,
         mac: v.mac,
+        serial: v.serial,
         channel: v.channel ? Number(v.channel) : undefined,
         mock: v.mock,
         port,
@@ -150,6 +153,14 @@ async function main() {
     }
 
     case 'discover': {
+      if (process.platform === 'darwin') {
+        const ports = readdirSync('/dev').filter((f) => f.startsWith('cu.') && /timebox|evo|divoom|tivoo|ditoo|pixoo/i.test(f));
+        if (ports.length) {
+          console.log('serial devices created by macOS for paired Bluetooth devices:');
+          for (const p of ports) console.log(`    --serial /dev/${p}`);
+          console.log('If one of these is the Timebox, prefer it over --mac (see README).\n');
+        }
+      }
       const mod = await import('bluetooth-serial-port');
       const bt = new mod.BluetoothSerialPort();
       await new Promise<void>((done) =>
@@ -171,7 +182,7 @@ async function main() {
     case 'send': {
       const state = positionals[1];
       if (!state || !isState(state)) throw new Error(`send needs a state: ${STATES.join(', ')}`);
-      const link = v.mock ? new MockLink(true) : new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
+      const link = makeLink();
       const device = new Device(link, { log: console.log, brightness: v.brightness ? Number(v.brightness) : undefined });
       const dir = defaultAnims();
       device.prepare(dir ? loadAnimSet(dir) : clawdSprites());
@@ -220,7 +231,7 @@ async function main() {
 
     case 'diag': {
       // Step through commands of increasing complexity so we can see where the box stops reacting.
-      const link = new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
+      const link = makeLink();
       const device = new Device(link, { log: console.log });
       device.prepare(clawdSprites());
       const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -231,7 +242,7 @@ async function main() {
         console.log(`    replies so far: ${device.replies}`);
       };
       await device.ensureConnected();
-      console.log(`connected on channel ${link.channelUsed}`);
+      console.log(`connected via ${link.label}${link instanceof RfcommLink ? ` channel ${link.channelUsed}` : ''}`);
       await step('0. settings query (box should send a reply)', () => device.send([encodeGetSettings()]));
       await step('1. brightness 10% (panel should dim)', () => device.send([encodeBrightness(10)]));
       await step('2. brightness 100% (panel should brighten)', () => device.send([encodeBrightness(100)]));
@@ -240,7 +251,7 @@ async function main() {
       const checker: Rgb[] = Array.from({ length: PIXELS }, (_, i) => (((i % 16) + Math.floor(i / 16)) % 2 ? [0, 0, 255] : [0, 255, 0]));
       await step('4. still image: green/blue checkerboard', () => device.send([encodeImage(checker)]));
       await step('5. animation: writing', () => device.show('writing'));
-      console.log(`\ndone. channel=${link.channelUsed} replies=${device.replies}`);
+      console.log(`\ndone. link=${link.label} replies=${device.replies}`);
       console.log('Tell me the first step where the panel changed, and whether any "reply:" lines appeared.');
       device.close();
       return;
@@ -259,6 +270,13 @@ async function main() {
       console.log(HELP);
       process.exitCode = 1;
   }
+}
+
+/** Build the device link from --mock / --serial / --mac. */
+function makeLink(): Link {
+  if (v.mock) return new MockLink(true);
+  if (v.serial) return new SerialLink(v.serial, console.log);
+  return new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
 }
 
 function requireMac(): string {
