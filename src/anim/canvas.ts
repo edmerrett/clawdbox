@@ -2,7 +2,7 @@ import { HEIGHT, PIXELS, Rgb, WIDTH } from './types.js';
 
 export const BLACK: Rgb = [0, 0, 0];
 
-/** Tiny 16x16 drawing surface used by the procedural placeholder art. */
+/** Tiny 16x16 drawing surface used by the built-in Clawd sprites. */
 export class Canvas {
   readonly px: Rgb[] = Array.from({ length: PIXELS }, () => BLACK);
 

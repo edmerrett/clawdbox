@@ -71,8 +71,10 @@ reports a non-blocking error for each event while the daemon is down). The gener
 [`hooks/claude-hooks.example.json`](hooks/claude-hooks.example.json). `uninstall-hooks` removes exactly what was added.
 
 ## Art
-Placeholder sprites are procedural (an orange blob, see `src/anim/placeholder.ts`). Replace them with your own:
-draw in Aseprite/LibreSprite or Piskel, then `clawdbox build-anims` converts to `art/anims/<state>.json`.
+The built-in sprites (`src/anim/clawd.ts`) are traced cell-for-cell from the Clawd-with-laptop GIF: the 12x8
+standing and crouching poses for idle, the sideways laptop-typing pose for writing, and the same body for the other
+states. `clawdbox sprites` regenerates `art/anims/*.json` from them. To replace or refine them, draw in
+Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the same `art/anims/<state>.json` files.
 [`art/README.md`](art/README.md) has the full guide and the design rules for tiny LED matrices.
 
 ## Daemon options
@@ -105,4 +107,4 @@ This project leans on patterns from [divoom-claude-monitor](https://github.com/k
 [hooks reference](https://code.claude.com/docs/en/hooks).
 
 ## Licence
-MIT. The orange character is a nod to Anthropic's Clawd; Clawd itself is Anthropic's mark.
+MIT for the code. The character is Anthropic's Clawd, reproduced here for a personal desk toy; Clawd is Anthropic's mark.

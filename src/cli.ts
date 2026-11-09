@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { DEFAULT_CONFIG, repoRoot, runDaemon } from './daemon/main.js';
-import { placeholders } from './anim/placeholder.js';
+import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
 import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath } from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
@@ -20,7 +20,7 @@ Usage:
                   [--hold-ms 2000] [--idle-ms 90000] [--channel N] [-v]
   clawdbox discover                 list paired Bluetooth devices (needs bluetooth-serial-port)
   clawdbox send <state> --mac MAC [--anims DIR]      push one animation and exit (smoke test)
-  clawdbox placeholders [--out art/anims]            write the built-in placeholder sprites as JSON
+  clawdbox sprites [--out art/anims]                 write the built-in Clawd sprites as JSON
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
   clawdbox install-hooks [--url http://127.0.0.1:7676/event] [--http]   merge hooks into ~/.claude/settings.json
   clawdbox uninstall-hooks
@@ -80,9 +80,10 @@ async function main() {
       });
       return;
 
+    case 'sprites':
     case 'placeholders': {
       const out = resolve(v.out ?? join(repoRoot(), 'art', 'anims'));
-      const files = writeAnims(Object.values(placeholders()), out);
+      const files = writeAnims(Object.values(clawdSprites()), out);
       console.log(files.map((f) => `wrote ${f}`).join('\n'));
       return;
     }
@@ -163,7 +164,7 @@ async function main() {
       const link = v.mock ? new MockLink(true) : new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined);
       const device = new Device(link, { log: console.log, brightness: v.brightness ? Number(v.brightness) : undefined });
       const dir = defaultAnims();
-      device.prepare(dir ? loadAnimSet(dir) : placeholders());
+      device.prepare(dir ? loadAnimSet(dir) : clawdSprites());
       await device.show(state);
       await new Promise((r) => setTimeout(r, 500));
       device.close();

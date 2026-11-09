@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Anim, State, loopMs } from '../anim/types.js';
 import { loadAnimSet } from '../anim/load.js';
-import { placeholders } from '../anim/placeholder.js';
+import { clawdSprites } from '../anim/clawd.js';
 import { Device } from './device.js';
 import { Link, MockLink, RfcommLink } from './link.js';
 import { HookEvent, Reducer } from './reducer.js';
@@ -47,8 +47,8 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     anims = loadAnimSet(cfg.animsDir);
     log(`loaded animations from ${cfg.animsDir}`);
   } else {
-    anims = placeholders();
-    log('using built-in placeholder animations (pass --anims <dir> for your own)');
+    anims = clawdSprites();
+    log('using built-in Clawd sprites (pass --anims <dir> for your own)');
   }
 
   let link: Link;

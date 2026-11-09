@@ -79,7 +79,7 @@ export function writeAnims(anims: Anim[], outDir: string): string[] {
     written.push(p);
   }
   const missing = STATES.filter((s) => !anims.some((a) => a.name === s));
-  if (missing.length) console.warn(`note: no art for ${missing.join(', ')} (the daemon needs all six; copy placeholders for the rest)`);
+  if (missing.length) console.warn(`note: no art for ${missing.join(', ')} (the daemon needs all six; run "clawdbox sprites" for the rest)`);
   return written;
 }
 

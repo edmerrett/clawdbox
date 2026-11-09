@@ -12,7 +12,7 @@
     "daemon": "tsx src/cli.ts daemon",
     "test": "tsx --test test/*.test.ts",
     "anims": "tsx src/cli.ts build-anims",
-    "placeholders": "tsx src/cli.ts placeholders",
+    "sprites": "tsx src/cli.ts sprites",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -11,7 +11,7 @@ The daemon needs six looping animations, one per state, as `art/anims/<state>.js
 | `running` | Bash | running pose, speed lines, fast bob (4 frames, ~110 ms) |
 | `needs-you` | permission prompt / question | big `?` pulsing, wide eyes (2 frames, ~400 ms) |
 
-The files in `anims/` right now are procedural placeholders (`clawdbox placeholders` regenerates them).
+The files in `anims/` are generated from the built-in Clawd sprites in `src/anim/clawd.ts` (`clawdbox sprites` regenerates them). Edit the ASCII poses there, or draw your own as below.
 
 ## Rules that make 16x16 LED art read well
 - Black background. Black pixels are LEDs that are off; use that for eyes and outlines.

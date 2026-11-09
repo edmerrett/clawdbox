@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { placeholders } from '../src/anim/placeholder.js';
+import { clawdSprites as placeholders } from '../src/anim/clawd.js';
 import { fromAnimFile, loopMs, STATES, toAnimFile, PIXELS } from '../src/anim/types.js';
 import { fromStrips, writeAnims } from '../src/tools/build-anims.js';
 import { loadAnimSet } from '../src/anim/load.js';

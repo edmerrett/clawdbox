@@ -13,7 +13,7 @@ export function loadAnimSet(dir: string): AnimSet {
   );
   const missing = STATES.filter((s) => !files.has(s));
   if (missing.length) {
-    throw new Error(`anims dir ${dir} is missing: ${missing.join(', ')} (run "clawdbox placeholders" or "clawdbox build-anims")`);
+    throw new Error(`anims dir ${dir} is missing: ${missing.join(', ')} (run "clawdbox sprites" or "clawdbox build-anims")`);
   }
   const set = {} as AnimSet;
   for (const s of STATES) {
