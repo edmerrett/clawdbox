@@ -20,8 +20,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      # bluetooth-serial-port is optional and needs a Bluetooth stack to build; skip it in CI
-      - run: npm ci --omit=optional --no-audit --no-fund --ignore-scripts
+      # bluetooth-serial-port is an optionalDependency: npm skips it where it cannot build
+      # (esbuild's platform binaries are optional too, so --omit=optional would break tsx)
+      - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
