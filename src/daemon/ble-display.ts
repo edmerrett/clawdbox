@@ -201,7 +201,21 @@ export class BleDisplay implements Display {
 
   close(): void {
     this.closed = true;
-    this.proc?.stdin.end();
-    setTimeout(() => this.proc?.kill(), 1500);
+    const proc = this.proc;
+    if (!proc) return;
+    try {
+      proc.stdin.end();
+      proc.kill('SIGTERM');
+    } catch {
+      /* already gone */
+    }
+    const t = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }, 1000);
+    t.unref();
   }
 }

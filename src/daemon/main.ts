@@ -97,7 +97,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   };
 
   const previewHtmlPath = join(repoRoot(), 'web', 'index.html');
-  startServer(
+  const server = startServer(
     cfg.port,
     cfg.host,
     {
@@ -142,10 +142,15 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     }
   }, 100);
 
+  let stopping = false;
   const shutdown = () => {
+    if (stopping) process.exit(1);
+    stopping = true;
     log('shutting down');
     device.close();
-    process.exit(0);
+    server.close();
+    // give the bridge a moment to drop the BLE link cleanly, then go
+    setTimeout(() => process.exit(0), 400).unref();
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
