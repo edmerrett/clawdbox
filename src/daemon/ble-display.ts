@@ -30,6 +30,8 @@ export function resolvePython(repoRoot: string, explicit?: string): string {
 
 interface BridgeEvent {
   ev: string;
+  /** Which op this event answers, when it is a reply. */
+  re?: string;
   message?: string;
   name?: string;
   address?: string;
@@ -81,7 +83,7 @@ export class BleDisplay implements Display {
       this.preloaded = false;
       const waiters = this.waiters;
       this.waiters = [];
-      for (const w of waiters) w({ ev: 'error', message: `bridge exited (${code})` });
+      for (const w of waiters) w({ ev: 'error', re: 'exit', message: `bridge exited (${code})` });
       if (this.closed) return;
       this.log(`bridge exited with code ${code}; restarting in ${this.restartMs / 1000}s`);
       setTimeout(() => this.start(), this.restartMs);
@@ -128,7 +130,9 @@ export class BleDisplay implements Display {
         if (ev.fatal) this.closed = true;
         break;
     }
-    if (ev.ev === 'shown' || ev.ev === 'error' || ev.ev === 'brightness' || ev.ev === 'pong' || ev.ev === 'preloaded') {
+    // Only replies to our ops ("re" set) resolve a waiting request. Connect-loop
+    // errors and logs are status, not answers.
+    if (ev.re) {
       const w = this.waiters.shift();
       if (w) w(ev);
     }
@@ -162,6 +166,7 @@ export class BleDisplay implements Display {
     this.queue = this.queue
       .then(async () => {
         if (this.opts.mode === 'slots') await this.waitPreloaded();
+        else await this.ensureConnected();
         const ev = await this.request(msg);
         this.pushes++;
         this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot}, sent ${ev.payload})` : ''}`);

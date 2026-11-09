@@ -139,7 +139,14 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   );
 
   // Show idle right away so the panel is never blank.
-  void device.show('idle').then(() => sched.shown('idle', Date.now()));
+  device
+    .show('idle')
+    .then(() => sched.shown('idle', Date.now()))
+    .catch((e) => debug(`initial show failed: ${(e as Error).message}`));
+
+  // A display hiccup must never take the daemon (and the hooks' endpoint) down.
+  process.on('unhandledRejection', (e) => log(`unhandled rejection: ${(e as Error)?.message ?? e}`));
+  process.on('uncaughtException', (e) => log(`uncaught exception: ${e.message}`));
 
   let busy = false;
   setInterval(async () => {

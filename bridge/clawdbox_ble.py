@@ -25,7 +25,9 @@ Run from Terminal.app or iTerm2 on macOS: the spawning app must declare Bluetoot
 import argparse
 import asyncio
 import json
+import os
 import sys
+import threading
 import time
 
 try:
@@ -145,7 +147,7 @@ class Bridge:
             log(f"preloaded {name} into slot {slot}")
             await asyncio.sleep(0.3)
         if announce:
-            emit(ev="preloaded", slots=self.slot_of)
+            emit(ev="preloaded", re="preload", slots=self.slot_of)
 
     async def play(self, name):
         slot = self.slot_of.get(name)
@@ -153,7 +155,7 @@ class Bridge:
             raise RuntimeError(f"{name} was not preloaded")
         payload = self.select_prefix + bytes([slot])
         await self.with_retry(lambda: self.client.send_raw_payload(payload))
-        emit(ev="shown", name=name, mode="slots", slot=slot, payload=payload.hex())
+        emit(ev="shown", re="play", name=name, mode="slots", slot=slot, payload=payload.hex())
 
     async def show_anim(self, name, frames):
         pixels = [[tuple(p) for p in f["pixels"]] for f in frames]
@@ -164,7 +166,7 @@ class Bridge:
                 await self.with_retry(lambda: self.client.static_image(pixels[0]))
             else:
                 self.stream_task = asyncio.create_task(self.stream(pixels, times))
-            emit(ev="shown", name=name, mode="stream")
+            emit(ev="shown", re="anim", name=name, mode="stream")
             return
 
         async def upload():
@@ -173,7 +175,7 @@ class Bridge:
 
         t0 = time.time()
         await self.with_retry(upload)
-        emit(ev="shown", name=name, mode="upload", seconds=round(time.time() - t0, 2))
+        emit(ev="shown", re="anim", name=name, mode="upload", seconds=round(time.time() - t0, 2))
 
     async def stream(self, pixels, times):
         i = 0
@@ -190,7 +192,7 @@ class Bridge:
     async def set_brightness(self, value):
         self.brightness = value
         await self.with_retry(lambda: self.client.set_brightness(int(value)))
-        emit(ev="brightness", value=value)
+        emit(ev="brightness", re="brightness", value=value)
 
     # ---------- main loop ----------
     async def run(self):
@@ -220,15 +222,15 @@ class Bridge:
                     elif op == "brightness":
                         await self.set_brightness(msg["value"])
                     elif op == "ping":
-                        emit(ev="pong", connected=self.client is not None)
+                        emit(ev="pong", re="ping", connected=self.client is not None)
                     else:
-                        emit(ev="error", message=f"unknown op {op}")
+                        emit(ev="error", re=op, message=f"unknown op {op}")
                 except Exception as e:
-                    emit(ev="error", message=f"{op} failed: {type(e).__name__}: {e}")
+                    emit(ev="error", re=op, message=f"{op} failed: {type(e).__name__}: {e}")
         await self.stop_stream()
         if self.client:
             try:
-                await self.client.disconnect()
+                await asyncio.wait_for(self.client.disconnect(), timeout=3)
             except Exception:
                 pass
 
@@ -239,6 +241,17 @@ async def scan_only():
         emit(ev="device", address=addr, name=name)
     if not found:
         emit(ev="error", message="no Divoom BLE device found")
+
+
+def watch_parent():
+    """Exit when the daemon that spawned us is gone, so we never keep the box's only
+    BLE connection hostage after a crash."""
+    parent = os.getppid()
+    while True:
+        time.sleep(1)
+        if os.getppid() != parent:
+            emit(ev="log", message="parent gone; exiting")
+            os._exit(0)
 
 
 def main():
@@ -253,10 +266,13 @@ def main():
     if a.scan:
         asyncio.run(scan_only())
         return
+    threading.Thread(target=watch_parent, daemon=True).start()
     try:
         asyncio.run(Bridge(a.address, a.mode, a.slot, a.brightness, bytes.fromhex(a.select)).run())
     except KeyboardInterrupt:
         pass
+    finally:
+        os._exit(0)
 
 
 if __name__ == "__main__":
