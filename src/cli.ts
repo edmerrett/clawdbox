@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { DEFAULT_CONFIG, repoRoot, runDaemon } from './daemon/main.js';
 import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
@@ -18,13 +18,11 @@ import {
   appBundlePath,
   writeAppBundle,
 } from './tools/install.js';
-import { isState, STATES } from './anim/types.js';
+import { isState, STATES, Rgb, PIXELS } from './anim/types.js';
 import { BtPairedDevice, Link, MockLink, RfcommLink, SerialLink, pickSppChannel } from './daemon/link.js';
-import { readdirSync } from 'node:fs';
 import { encodeBrightness, encodeGetSettings, encodeImage } from './protocol/divoom.js';
-import { Rgb, PIXELS } from './anim/types.js';
 import { Device } from './daemon/device.js';
-import { BleDisplay, resolvePython } from './daemon/ble-display.js';
+import { BleDisplay, BleMode, resolvePython } from './daemon/ble-display.js';
 import { Display } from './daemon/display.js';
 import { loadAnimSet } from './anim/load.js';
 
@@ -62,7 +60,6 @@ const { values: v, positionals } = parseArgs({
     serial: { type: 'string' },
     ble: { type: 'boolean', default: false },
     address: { type: 'string' },
-    stream: { type: 'boolean', default: false },
     upload: { type: 'boolean', default: false },
     slots: { type: 'boolean', default: false },
     select: { type: 'string' },
@@ -86,8 +83,18 @@ const { values: v, positionals } = parseArgs({
 });
 
 const cmd = positionals[0];
-const num = (s: string | undefined, d: number) => (s === undefined ? d : Number(s));
-const port = num(v.port, DEFAULT_CONFIG.port);
+// Numeric flags are validated inside main() so a typo is a one-line error, not a stack trace.
+let port = DEFAULT_CONFIG.port;
+let brightness = DEFAULT_CONFIG.brightness;
+let channelFlag: number | undefined;
+let coffeeMin = DEFAULT_CONFIG.idleStageAfterMs / 60_000;
+
+function parseNumericFlags(): void {
+  port = numFlag('port', v.port, DEFAULT_CONFIG.port, 1, 65535);
+  brightness = numFlag('brightness', v.brightness, DEFAULT_CONFIG.brightness, 0, 100);
+  channelFlag = v.channel === undefined ? undefined : numFlag('channel', v.channel, 1, 1, 30);
+  coffeeMin = numFlag('coffee-min', v['coffee-min'], DEFAULT_CONFIG.idleStageAfterMs / 60_000, 0, 1440);
+}
 const defaultAnims = () => {
   const d = join(repoRoot(), 'art', 'anims');
   return v.anims ?? (existsSync(join(d, 'idle.json')) ? d : undefined);
@@ -98,6 +105,7 @@ async function main() {
     console.log(HELP);
     return;
   }
+  parseNumericFlags();
   switch (cmd) {
     case 'daemon':
       await runDaemon({
@@ -109,23 +117,21 @@ async function main() {
         bleMode: bleMode(),
         bleSelect: v.select,
         python: v.python,
-        channel: v.channel ? Number(v.channel) : undefined,
+        channel: channelFlag,
         mock: v.mock,
         port,
         animsDir: defaultAnims(),
-        brightness: v.brightness ? Number(v.brightness) : DEFAULT_CONFIG.brightness,
-        minHoldMs: num(v['hold-ms'], DEFAULT_CONFIG.minHoldMs),
-        idleAfterMs: num(v['idle-ms'], DEFAULT_CONFIG.idleAfterMs),
-        idleStageAfterMs: v['coffee-min'] !== undefined ? Number(v['coffee-min']) * 60_000 : DEFAULT_CONFIG.idleStageAfterMs,
-        idleStageCycleMs:
-          v['coffee-min'] !== undefined ? Math.max(60_000, Number(v['coffee-min']) * 60_000) : DEFAULT_CONFIG.idleStageCycleMs,
-        flashMs: num(v['flash-ms'], DEFAULT_CONFIG.flashMs),
+        brightness,
+        minHoldMs: numFlag('hold-ms', v['hold-ms'], DEFAULT_CONFIG.minHoldMs, 0, 60_000),
+        idleAfterMs: numFlag('idle-ms', v['idle-ms'], DEFAULT_CONFIG.idleAfterMs, 1000, 86_400_000),
+        idleStageAfterMs: coffeeMin * 60_000,
+        idleStageCycleMs: Math.max(60_000, coffeeMin * 60_000),
+        flashMs: numFlag('flash-ms', v['flash-ms'], DEFAULT_CONFIG.flashMs, 500, 60_000),
         verbose: v.verbose,
       });
       return;
 
-    case 'sprites':
-    case 'placeholders': {
+    case 'sprites': {
       const out = resolve(v.out ?? join(repoRoot(), 'art', 'anims'));
       const files = writeAnims(Object.values(clawdSprites()), out);
       console.log(files.map((f) => `wrote ${f}`).join('\n'));
@@ -136,7 +142,7 @@ async function main() {
       const input = positionals[1];
       if (!input) throw new Error('build-anims needs a sheet.json or a directory of PNG strips');
       const out = resolve(v.out ?? join(repoRoot(), 'art', 'anims'));
-      const files = buildAnims(input, out, num(v.fps, 6));
+      const files = buildAnims(input, out, numFlag('fps', v.fps, 6, 1, 30));
       console.log(files.map((f) => `wrote ${f}`).join('\n'));
       return;
     }
@@ -172,8 +178,10 @@ async function main() {
       else args.push('--mac', v.mac!);
       const anims = defaultAnims();
       if (anims) args.push('--anims', anims);
-      if (v.brightness) args.push('--brightness', v.brightness);
-      if (v.channel) args.push('--channel', v.channel);
+      if (v.brightness) args.push('--brightness', String(brightness));
+      if (channelFlag !== undefined) args.push('--channel', String(channelFlag));
+      if (v.port) args.push('--port', String(port));
+      if (v['coffee-min'] !== undefined) args.push('--coffee-min', String(coffeeMin));
       // 1. app bundle so macOS grants Bluetooth to the daemon
       const appDir = appBundlePath();
       writeAppBundle(appDir, appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot() }));
@@ -183,13 +191,16 @@ async function main() {
       const path = launchdPlistPath();
       mkdirSync(join(path, '..'), { recursive: true });
       writeFileSync(path, plist);
+      const domain = `gui/${process.getuid?.() ?? 501}`;
       try {
-        execSync(`launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL} 2>/dev/null; launchctl bootstrap gui/$(id -u) "${path}"`, {
-          stdio: 'inherit',
-          shell: '/bin/bash',
-        });
+        execFileSync('launchctl', ['bootout', `${domain}/${LAUNCHD_LABEL}`], { stdio: 'ignore' });
       } catch {
-        console.warn('launchctl bootstrap failed; load it manually with: launchctl bootstrap gui/$(id -u) ' + path);
+        /* not loaded yet */
+      }
+      try {
+        execFileSync('launchctl', ['bootstrap', domain, path], { stdio: 'inherit' });
+      } catch {
+        console.warn(`launchctl bootstrap failed; load it manually with: launchctl bootstrap ${domain} ${path}`);
       }
       console.log(`app bundle:    ${appDir}\nlaunchd agent: ${path}\nlogs:          ${logDir}`);
       console.log('\nIf macOS asks whether Clawdbox may use Bluetooth, allow it. Check with:  tail -f ' + join(logDir, 'clawdbox.log'));
@@ -199,13 +210,12 @@ async function main() {
     case 'uninstall-launchd': {
       const path = launchdPlistPath();
       try {
-        execSync(`launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`, { stdio: 'inherit', shell: '/bin/bash' });
+        execFileSync('launchctl', ['bootout', `gui/${process.getuid?.() ?? 501}/${LAUNCHD_LABEL}`], { stdio: 'ignore' });
       } catch {
         /* not loaded */
       }
-      if (existsSync(path)) execSync(`rm "${path}"`);
-      const appDir = appBundlePath();
-      if (existsSync(appDir)) execSync(`rm -rf "${appDir}"`);
+      rmSync(path, { force: true });
+      rmSync(appBundlePath(), { recursive: true, force: true });
       console.log('launchd agent and app bundle removed');
       return;
     }
@@ -251,12 +261,12 @@ async function main() {
       await new Promise((r) => setTimeout(r, v.ble ? 3000 : 800));
       device.close();
       console.log('done');
+      setTimeout(() => process.exit(0), v.ble ? 1500 : 200).unref();
       return;
     }
 
     case 'ble-scan': {
       const python = resolvePython(repoRoot(), v.python);
-      const { spawn } = await import('node:child_process');
       await new Promise<void>((done) => {
         const p = spawn(python, [join(repoRoot(), 'bridge', 'clawdbox_ble.py'), '--scan'], { stdio: ['ignore', 'pipe', 'inherit'] });
         p.stdout.on('data', (d: Buffer) => process.stdout.write(d));
@@ -296,14 +306,18 @@ async function main() {
         }
       }
       const winner = results.find((r) => r.reply);
-      console.log(winner ? `\nUse --channel ${winner.channel}` : '\nNo channel replied. Paste this output back to me.');
+      console.log(
+        winner
+          ? `\nUse --channel ${winner.channel}`
+          : '\nNo channel replied. If the box pairs as "TimeBox-Evo-audio" (capital B) it is the newer BLE model: use --ble.',
+      );
       return;
     }
 
     case 'diag': {
       // Step through commands of increasing complexity so we can see where the box stops reacting.
       const link = makeLink();
-      const device = new Device(link, { log: console.log });
+      const device = new Device(link, { log: console.log, brightness });
       device.prepare(clawdSprites());
       const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const step = async (what: string, fn: () => Promise<void>) => {
@@ -323,7 +337,11 @@ async function main() {
       await step('4. still image: green/blue checkerboard', () => device.send([encodeImage(checker)]));
       await step('5. animation: writing', () => device.show('writing'));
       console.log(`\ndone. link=${link.label} replies=${device.replies}`);
-      console.log('Tell me the first step where the panel changed, and whether any "reply:" lines appeared.');
+      console.log(
+        device.replies
+          ? 'The box answered: this transport works.'
+          : 'The box never replied. On the newer TimeBox-Evo-audio the Classic serial port ignores commands; use --ble.',
+      );
       device.close();
       return;
     }
@@ -343,8 +361,16 @@ async function main() {
   }
 }
 
-function bleMode(): 'upload' | 'stream' | 'slots' {
+function bleMode(): BleMode {
   return v.slots ? 'slots' : v.upload ? 'upload' : 'stream';
+}
+
+/** Parse a numeric flag or fail with a clear message instead of letting NaN reach the device. */
+function numFlag(name: string, raw: string | undefined, fallback: number, min: number, max: number): number {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) throw new Error(`--${name} must be a number between ${min} and ${max}, got "${raw}"`);
+  return n;
 }
 
 /** Build a display from --ble / --mock / --serial / --mac. */
@@ -367,7 +393,7 @@ function makeDisplay(log: (m: string) => void): Display {
 function makeLink(): Link {
   if (v.mock) return new MockLink(true);
   if (v.serial) return new SerialLink(v.serial, console.log);
-  return new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
+  return new RfcommLink(requireMac(), channelFlag, 15_000, console.log);
 }
 
 function requireMac(): string {

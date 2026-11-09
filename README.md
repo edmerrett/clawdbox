@@ -41,7 +41,7 @@ Claude Code ──hook──▶ POST 127.0.0.1:7676/event ──▶ clawdbox dae
 ```
 
 Claude Code's [hooks](https://code.claude.com/docs/en/hooks) fire on every tool call, prompt, permission request
-and stop. Each one POSTs a little JSON to a local daemon in about a millisecond and never waits for an answer.
+and stop. Each one POSTs a little JSON to a local daemon in the background and never waits for an answer.
 The daemon works out what Clawd should be doing, smooths out the flicker of rapid tool calls, and streams the
 right loop to the panel. A browser previewer shows the same thing, and a menu bar app shows whether the panel is
 connected and which state is up.
@@ -59,7 +59,10 @@ connected and which state is up.
 ```bash
 git clone https://github.com/edmerrett/clawdbox && cd clawdbox
 npm install && npm run build
-python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # newer Evo only
+```
+Newer Evo (the BLE one, see [Which Evo?](#which-evo)) also needs the Python bridge's dependency:
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt
 ```
 
 1. **Pair** the Timebox in System Settings → Bluetooth. Then turn the **phone's Bluetooth off**: the Divoom app

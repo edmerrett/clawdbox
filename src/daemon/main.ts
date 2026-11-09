@@ -93,6 +93,12 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     device = new Device(link, { brightness: cfg.brightness, log });
   }
   device.prepare(anims);
+  // After a link drop the panel may be showing the Divoom clock; put Clawd back.
+  device.onReconnect = () => {
+    const state = sched.current;
+    log(`link is back; re-showing ${state}`);
+    device.show(state).catch((e) => debug(`re-show failed: ${(e as Error).message}`));
+  };
 
   const reducer = new Reducer({ doneAfterMs: cfg.doneAfterMs });
   const sched = new Scheduler({
@@ -102,6 +108,10 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     flashMs: cfg.flashMs,
     idleStageAfterMs: cfg.idleStageAfterMs,
     idleStageCycleMs: cfg.idleStageCycleMs,
+    onIdleFallback: (now) => {
+      log('no events for a while; treating the session as idle');
+      reducer.idleAll(now);
+    },
     loopMs: Object.fromEntries(Object.entries(anims).map(([k, a]) => [k, loopMs(a)])) as Record<State, number>,
   });
 
@@ -156,9 +166,10 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     .then(() => sched.shown('idle', Date.now()))
     .catch((e) => debug(`initial show failed: ${(e as Error).message}`));
 
-  // A display hiccup must never take the daemon (and the hooks' endpoint) down.
-  process.on('unhandledRejection', (e) => log(`unhandled rejection: ${(e as Error)?.message ?? e}`));
-  process.on('uncaughtException', (e) => log(`uncaught exception: ${e.message}`));
+  // A display hiccup must never take the daemon (and the hooks' endpoint) down,
+  // but a real bug should be visible in the log with its stack.
+  process.on('unhandledRejection', (e) => log(`unhandled rejection: ${(e as Error)?.stack ?? String(e)}`));
+  process.on('uncaughtException', (e) => log(`uncaught exception: ${e.stack ?? e.message}`));
 
   let busy = false;
   setInterval(async () => {
@@ -189,8 +200,8 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     log('shutting down');
     device.close();
     server.close();
-    // give the bridge a moment to drop the BLE link cleanly, then go
-    setTimeout(() => process.exit(0), 400).unref();
+    // the bridge disconnects the panel on SIGTERM; give it a moment, then go
+    setTimeout(() => process.exit(0), 1500).unref();
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

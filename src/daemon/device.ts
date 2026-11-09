@@ -24,6 +24,10 @@ export class Device implements Display {
   private readonly log: (msg: string) => void;
   /** Incremented on every successful push; lets the UI show device status. */
   pushes = 0;
+  onReconnect?: () => void;
+  private everConnected = false;
+  /** A stalled write must not block the queue forever. */
+  writeTimeoutMs = 10_000;
   /** Messages received from the box; proof it is parsing what we send. */
   replies = 0;
   lastError: string | null = null;
@@ -74,6 +78,8 @@ export class Device implements Display {
           this.log('connected');
           await sleep(this.settleMs);
           if (this.opts.brightness !== undefined) await this.rawWrite([encodeBrightness(this.opts.brightness)]);
+          if (this.everConnected) this.onReconnect?.();
+          this.everConnected = true;
         } catch (e) {
           this.lastError = (e as Error).message;
           this.log(`connect failed: ${this.lastError}; retry in ${this.backoffMs / 1000}s`);
@@ -91,8 +97,9 @@ export class Device implements Display {
   show(state: State): Promise<void> {
     const msgs = this.encoded.get(state);
     if (!msgs) return Promise.reject(new Error(`no animation prepared for ${state}`));
-    this.queue = this.queue.then(() => this.push(state, msgs)).catch(() => {});
-    return this.queue;
+    const run = this.queue.then(() => this.push(state, msgs));
+    this.queue = run.catch(() => {});
+    return run;
   }
 
   private async push(state: State, msgs: Buffer[]): Promise<void> {
@@ -113,7 +120,7 @@ export class Device implements Display {
   private async rawWrite(msgs: Buffer[]): Promise<void> {
     const gap = Math.ceil(1000 / MAX_MSGS_PER_SEC);
     for (let i = 0; i < msgs.length; i++) {
-      await this.link.write(msgs[i]);
+      await withTimeout(this.link.write(msgs[i]), this.writeTimeoutMs, 'write timed out');
       if (i < msgs.length - 1) await sleep(gap);
     }
   }
@@ -137,4 +144,20 @@ export class Device implements Display {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, why: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(why)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }

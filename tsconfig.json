@@ -10,7 +10,13 @@
     "skipLibCheck": true,
     "declaration": false,
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

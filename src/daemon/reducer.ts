@@ -89,9 +89,19 @@ export class Reducer {
     };
     const tool = ev.tool_name ?? '';
 
+    // Only the events that prove a live session may create one; a stray Stop or
+    // PostToolUse for an unknown id must not grow the map.
+    const creates =
+      ev.hook_event_name === 'SessionStart' || ev.hook_event_name === 'UserPromptSubmit' || ev.hook_event_name === 'PreToolUse';
+    if (!rec && !creates) return { action: { kind: 'ignore', why: `unknown session ${id}` } };
+
     switch (ev.hook_event_name) {
-      case 'SessionStart':
-        return { ...set('idle'), flash: ev.source === 'startup' || ev.source === undefined ? 'wave' : undefined };
+      case 'SessionStart': {
+        // a fresh session (or /clear, resume) starts with a clean slate
+        this.sessions.delete(id);
+        const r = set('idle', { turnStartedAt: undefined, ultra: false });
+        return { ...r, flash: ev.source === 'startup' || ev.source === undefined ? 'wave' : undefined };
+      }
 
       case 'UserPromptSubmit': {
         const prompt = ev.prompt ?? '';
@@ -174,15 +184,10 @@ export class Reducer {
     return best;
   }
 
-  /** Most recent activity timestamp across sessions, or 0. */
-  lastActivity(): number {
-    let t = 0;
-    for (const rec of this.sessions.values()) t = Math.max(t, rec.updatedAt);
-    return t;
+  /** The scheduler decided the panel is idle (no events for a long time); make the sessions agree. */
+  idleAll(now: number): void {
+    for (const [id, rec] of this.sessions) {
+      if (rec.state !== 'idle') this.sessions.set(id, { ...rec, state: 'idle', updatedAt: now });
+    }
   }
-}
-
-/** Backwards-compatible helper used by tests and logging. */
-export function classify(ev: HookEvent, rules: ToolRule[] = DEFAULT_TOOL_RULES): ReducerAction {
-  return new Reducer({ rules }).apply(ev).action;
 }

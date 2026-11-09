@@ -15,8 +15,6 @@ export interface Link extends EventEmitter {
 export class MockLink extends EventEmitter implements Link {
   open = false;
   readonly label = 'mock';
-  bytes = 0;
-  messages = 0;
   constructor(private readonly verbose = false) {
     super();
   }
@@ -25,8 +23,6 @@ export class MockLink extends EventEmitter implements Link {
   }
   async write(buf: Buffer): Promise<void> {
     if (!this.open) throw new Error('mock link closed');
-    this.bytes += buf.length;
-    this.messages++;
     if (this.verbose) console.log(`[mock] ${buf.length} bytes: ${buf.subarray(0, 8).toString('hex')}...`);
   }
   close(): void {
@@ -96,6 +92,14 @@ export class RfcommLink extends EventEmitter implements Link {
         `bluetooth-serial-port is not installed or failed to build (${(e as Error).message}). ` +
           `Run "npm install" on the machine with the Bluetooth adapter (macOS needs Xcode command line tools).`,
       );
+    }
+    if (this.port) {
+      try {
+        this.port.close();
+      } catch {
+        /* previous attempt already dead */
+      }
+      this.port.removeAllListeners();
     }
     const port = new mod.BluetoothSerialPort();
     this.port = port;

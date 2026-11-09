@@ -13,7 +13,7 @@
  *
  * Pure and clock-free: callers pass `now` so it is easy to test.
  */
-import { ActivityState, FlashState, IDLE_STAGES, State } from '../anim/types.js';
+import { ActivityState, FLASH_STATES, FlashState, IDLE_STAGES, State } from '../anim/types.js';
 
 export interface SchedulerOptions {
   minHoldMs: number;
@@ -28,6 +28,8 @@ export interface SchedulerOptions {
   idleStageAfterMs: number;
   /** Then move to the next stage every this often. */
   idleStageCycleMs: number;
+  /** Called when a busy target falls back to idle because events stopped (Esc interrupt). */
+  onIdleFallback?: (now: number) => void;
 }
 
 export const DEFAULT_SCHEDULER: Omit<SchedulerOptions, 'loopMs'> = {
@@ -90,6 +92,7 @@ export class Scheduler {
     // Idle fallback: nothing heard for a long time while busy.
     if (this.target !== 'idle' && this.lastEventAt >= 0 && now - this.lastEventAt > this.opts.idleAfterMs) {
       this.target = 'idle';
+      this.opts.onIdleFallback?.(now);
     }
 
     const want = this.desired(now);
@@ -115,7 +118,7 @@ export class Scheduler {
   }
 
   private isFlash(s: State): boolean {
-    return s === 'wave' || s === 'done' || s === 'error' || s === 'heart';
+    return (FLASH_STATES as readonly string[]).includes(s);
   }
 
   /** Confirm that `state` is now on the panel. */

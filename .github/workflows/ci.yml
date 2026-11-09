@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   node:
     name: node ${{ matrix.node }} / ${{ matrix.os }}
@@ -19,7 +21,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       # bluetooth-serial-port is optional and needs a Bluetooth stack to build; skip it in CI
-      - run: npm ci --no-optional --no-audit --no-fund
+      - run: npm ci --omit=optional --no-audit --no-fund --ignore-scripts
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
@@ -37,7 +39,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r bridge/requirements.txt ruff
-      - run: ruff check bridge
+      - run: ruff check bridge scripts
+      - run: ruff format --check bridge scripts
       - run: python -m py_compile bridge/clawdbox_ble.py
   swift:
     name: menu bar app builds

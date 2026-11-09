@@ -20,7 +20,6 @@
 import { Anim, Frame, PIXELS, Rgb, palettize } from '../anim/types.js';
 
 export const CMD_IMAGE = 0x44;
-export const CMD_CHANNEL = 0x45;
 export const CMD_ANIMATION = 0x49;
 export const CMD_BRIGHTNESS = 0x74;
 /** Ask the box for its current settings; it answers with 01 .. 04 46 55 .. 02. */
@@ -30,16 +29,6 @@ export const CMD_GET_SETTINGS = 0x46;
 export const ANIM_CHUNK = 200;
 /** Device drops the link above ~30 messages/s; stay below it. */
 export const MAX_MSGS_PER_SEC = 25;
-
-export enum Channel {
-  Time = 0x00,
-  Lightning = 0x01,
-  Cloud = 0x02,
-  VjEffects = 0x03,
-  Visualization = 0x04,
-  Animation = 0x05,
-  Scoreboard = 0x06,
-}
 
 function u16le(n: number): number[] {
   if (n < 0 || n > 0xffff) throw new Error(`u16 out of range: ${n}`);
@@ -120,10 +109,6 @@ export function encodeBrightness(percent: number): Buffer {
 
 export function encodeGetSettings(): Buffer {
   return wrap([CMD_GET_SETTINGS]);
-}
-
-export function encodeChannel(ch: Channel): Buffer {
-  return wrap([CMD_CHANNEL, ch]);
 }
 
 /** Byte size of the frame data an animation would stream (for sanity checks / README). */

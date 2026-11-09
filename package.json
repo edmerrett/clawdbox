@@ -11,15 +11,17 @@
     "clawdbox": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts daemon --mock",
     "daemon": "tsx src/cli.ts daemon",
     "test": "tsx --test test/*.test.ts",
     "anims": "tsx src/cli.ts build-anims",
     "sprites": "tsx src/cli.ts sprites",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.test.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" web/index.html",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" web/index.html"
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" web/index.html",
+    "prepublishOnly": "npm run lint && npm test && npm run build",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "pngjs": "^7.0.0"
@@ -30,9 +32,9 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pngjs": "^6.0.5",
+    "prettier": "^3.3.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0",
-    "prettier": "^3.3.0"
+    "typescript": "^5.9.0"
   },
   "repository": {
     "type": "git",
@@ -42,7 +44,7 @@
   "bugs": {
     "url": "https://github.com/edmerrett/clawdbox/issues"
   },
-  "author": "Ed Merrett",
+  "author": "Ed Merrett <edward.merrett@gmail.com>",
   "keywords": [
     "claude-code",
     "claude",
@@ -58,10 +60,15 @@
     "dist",
     "art/anims",
     "art/README.md",
-    "bridge",
+    "bridge/clawdbox_ble.py",
+    "bridge/requirements.txt",
     "web",
     "hooks",
-    "menubar",
+    "menubar/ClawdbarApp.swift",
+    "menubar/Info.plist",
+    "menubar/build.sh",
+    "menubar/install.sh",
+    "menubar/uninstall.sh",
     "README.md",
     "LICENSE"
   ]

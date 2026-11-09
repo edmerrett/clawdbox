@@ -130,7 +130,6 @@
         canvas.height = SIZE;
         const ctx = canvas.getContext('2d');
         const loop = anim.frames.reduce((n, f) => n + f.ms, 0);
-        card.innerHTML = '';
         card.appendChild(canvas);
         card.insertAdjacentHTML(
           'beforeend',

@@ -63,9 +63,10 @@ function withEyes(rows: string[], eyeRow: string): string[] {
   return rows.map((r, i) => (i === 1 ? eyeRow : r));
 }
 const BLINK = withEyes(STAND, '..OOOOOOOO..');
-const WIDE = withEyes(STAND, '..OKKOOKKO..');
-/** Content, eyes closed: a flat line each. */
-const CLOSED = withEyes(STAND, '..OKKOOKKO..').map((r, i) => (i === 1 ? '..OKKOOKKO..' : r));
+/** Eyes closed: a flat 2-px dash each (content, asleep, squeezed shut). */
+const CLOSED = withEyes(STAND, '..OKKOOKKO..');
+/** Eyes wide: two rows tall (alert, startled). */
+const WIDE = STAND.map((r, i) => (i === 0 ? '..OKOOOOKO..' : r));
 
 /** Turned right, 10 wide, shaded back on the left; arms (DD) at row 3 (up) or 5 (down). */
 function sideways(arms: 3 | 5): string[] {
@@ -290,7 +291,7 @@ export function vibing(): Anim {
     name: 'vibing',
     frames: [0, 1, 2, 1].map((i) =>
       frame(300, (c) => {
-        const dy = i === 2 ? 1 : i === 0 ? 0 : 0;
+        const dy = i === 2 ? 1 : 0;
         stand(c, CLOSED, 0, dy);
         c.rect(4, 5 + dy, 8, 1, BLUE); // band
         c.set(3, 6 + dy, BLUE);

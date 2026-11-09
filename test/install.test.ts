@@ -12,7 +12,7 @@ test('buildHooks covers every event and uses matcher only where supported', () =
   const handler = (h.Stop[0] as { hooks: Record<string, unknown>[] }).hooks[0];
   assert.equal(handler.type, 'command');
   assert.equal(handler.async, true);
-  assert.match(String(handler.command), /curl .*--data-binary @- http:\/\/127\.0\.0\.1:7676\/event/);
+  assert.match(String(handler.command), /curl .*--data-binary @- 'http:\/\/127\.0\.0\.1:7676\/event'/);
   const http = (buildHooks(URL, 'http').Stop[0] as { hooks: Record<string, unknown>[] }).hooks[0];
   assert.equal(http.type, 'http');
   assert.equal(http.url, URL);

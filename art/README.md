@@ -1,6 +1,6 @@
 # Drawing the sprites
 
-The daemon needs one looping animation per state, as `art/anims/<state>.json`. The six core states:
+The daemon needs one looping animation per state, as `art/anims/<state>.json`. The core activity states:
 
 | state | when | suggested loop |
 |---|---|---|

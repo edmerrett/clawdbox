@@ -7,6 +7,8 @@ export interface Display {
   /** Successful state pushes. */
   pushes: number;
   lastError: string | null;
+  /** Called after the link comes back following a drop, so the caller can re-show the current state. */
+  onReconnect?: () => void;
   prepare(anims: Record<State, Anim>): void;
   show(state: State): Promise<void>;
   setBrightness(percent: number): Promise<void>;

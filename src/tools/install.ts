@@ -1,9 +1,9 @@
 /**
  * Installers: merge hooks into ~/.claude/settings.json and write a launchd agent.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 export const HOOK_EVENTS_WITH_MATCHER = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'PermissionDenied'];
 export const HOOK_EVENTS_PLAIN = ['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop', 'StopFailure', 'SessionEnd'];
@@ -11,7 +11,21 @@ export const MARKER = 'clawdbox';
 
 type Handler = Record<string, unknown>;
 
+/** The daemon URL must be a plain http URL; it is embedded in a shell command Claude Code runs. */
+export function validateDaemonUrl(url: string): string {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error(`not a valid URL: ${url}`);
+  }
+  if (u.protocol !== 'http:') throw new Error(`daemon URL must be http://, got ${u.protocol}`);
+  if (!/^[A-Za-z0-9.:/_-]+$/.test(u.href)) throw new Error(`daemon URL has characters that are not allowed: ${url}`);
+  return u.href;
+}
+
 export function hookHandler(url: string, mode: 'command' | 'http'): Handler {
+  url = validateDaemonUrl(url);
   if (mode === 'http') {
     // Awaited by Claude Code; a dead daemon shows a non-blocking error on each event.
     return { type: 'http', url, timeout: 2, statusMessage: MARKER };
@@ -19,7 +33,7 @@ export function hookHandler(url: string, mode: 'command' | 'http'): Handler {
   // Fire-and-forget: async command, exits 0 whatever happens, output discarded.
   return {
     type: 'command',
-    command: `curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- ${url} >/dev/null 2>&1 || true`,
+    command: `curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- '${url}' >/dev/null 2>&1 || true`,
     async: true,
     timeout: 5,
     statusMessage: MARKER,
@@ -70,21 +84,36 @@ export function settingsPath(): string {
   return join(homedir(), '.claude', 'settings.json');
 }
 
-export function installHooks(url: string, mode: 'command' | 'http', path = settingsPath()): void {
-  mkdirSync(join(path, '..'), { recursive: true });
-  let settings: Record<string, unknown> = {};
-  if (existsSync(path)) {
-    copyFileSync(path, `${path}.clawdbox.bak`);
-    settings = JSON.parse(readFileSync(path, 'utf8'));
+function readSettings(path: string): Record<string, unknown> {
+  if (!existsSync(path)) return {};
+  const raw = readFileSync(path, 'utf8');
+  try {
+    const v = JSON.parse(raw);
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('not an object');
+    return v as Record<string, unknown>;
+  } catch (e) {
+    throw new Error(`${path} is not valid JSON (${(e as Error).message}); fix it by hand before installing hooks`);
   }
-  const merged = mergeHooks(settings, buildHooks(url, mode));
-  writeFileSync(path, JSON.stringify(merged, null, 2) + '\n');
+}
+
+/** Write via a temp file and rename so a crash never leaves a half-written settings file. */
+function writeSettings(path: string, settings: Record<string, unknown>): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.clawdbox.tmp`;
+  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+  renameSync(tmp, path);
+}
+
+export function installHooks(url: string, mode: 'command' | 'http', path = settingsPath()): void {
+  const settings = readSettings(path);
+  // keep the first pristine backup; later installs only touch our own entries
+  if (existsSync(path) && !existsSync(`${path}.clawdbox.bak`)) copyFileSync(path, `${path}.clawdbox.bak`);
+  writeSettings(path, mergeHooks(settings, buildHooks(url, mode)));
 }
 
 export function uninstallHooks(path = settingsPath()): void {
   if (!existsSync(path)) return;
-  const settings = JSON.parse(readFileSync(path, 'utf8'));
-  writeFileSync(path, JSON.stringify(removeHooks(settings), null, 2) + '\n');
+  writeSettings(path, removeHooks(readSettings(path)));
 }
 
 /* ---------- launchd + app bundle ---------- */

@@ -2,11 +2,14 @@
  * Local HTTP endpoint. Claude Code hooks POST their JSON here. Also serves the
  * browser previewer and a small status/control API.
  *
- *   POST /event          hook body (JSON)  -> 204
- *   GET  /state          {current, pending, sessions, device}
+ *   POST /event          hook body (JSON object)  -> 204
+ *   GET  /state          {current, pending, sessions, device, transport}
  *   GET  /anims          all animations as palette-index JSON (for the previewer)
- *   POST /show/<state>   force a state (testing); ?hold=1 keeps it until the next event
+ *   POST /show/<state>   force a state until the next hook event (testing)
  *   GET  /               previewer page
+ *
+ * Loopback only. Requests that carry an Origin header from anywhere but this
+ * server are refused, so a web page in the user's browser cannot forge events.
  */
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -21,19 +24,58 @@ export interface ServerDeps {
   previewHtmlPath: string;
 }
 
+export class BodyTooLarge extends Error {}
+
 function readBody(req: IncomingMessage, limit = 1_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (c) => {
-      data += c;
-      if (data.length > limit) {
-        reject(new Error('body too large'));
-        req.destroy();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let done = false;
+    const finish = (fn: () => void) => {
+      if (done) return;
+      done = true;
+      fn();
+    };
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > limit) {
+        req.pause();
+        finish(() => reject(new BodyTooLarge('body too large')));
+        return;
       }
+      chunks.push(c);
     });
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
+    req.on('end', () => finish(() => resolve(Buffer.concat(chunks).toString('utf8'))));
+    req.on('error', (e) => finish(() => reject(e)));
+    req.on('close', () => finish(() => reject(new Error('connection closed'))));
   });
+}
+
+/** A hook body must be a JSON object whose interesting fields, if present, are strings. */
+export function parseHookEvent(raw: string): HookEvent | null {
+  let v: unknown;
+  try {
+    v = raw.trim() ? JSON.parse(raw) : {};
+  } catch {
+    return null;
+  }
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  for (const k of ['hook_event_name', 'session_id', 'tool_name', 'notification_type', 'agent_id', 'prompt', 'source', 'reason']) {
+    if (o[k] !== undefined && typeof o[k] !== 'string') return null;
+  }
+  return o as HookEvent;
+}
+
+function originAllowed(req: IncomingMessage, host: string, port: number): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true; // curl, http hooks, same-origin fetches without Origin
+  return origin === `http://${host}:${port}` || origin === `http://localhost:${port}`;
+}
+
+function boundPort(server: ReturnType<typeof createServer>, fallback: number): number {
+  const a = server.address();
+  return a && typeof a === 'object' ? a.port : fallback;
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
@@ -47,16 +89,19 @@ export function startServer(port: number, host: string, deps: ServerDeps, log: (
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     try {
+      if (req.method === 'POST' && !originAllowed(req, host, boundPort(server, port))) {
+        res.writeHead(403).end();
+        return;
+      }
       if (req.method === 'POST' && url.pathname === '/event') {
-        const raw = await readBody(req);
-        let ev: HookEvent = {};
-        if (raw.trim()) {
-          try {
-            ev = JSON.parse(raw);
-          } catch {
-            res.writeHead(400).end();
-            return;
-          }
+        if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) {
+          res.writeHead(415).end();
+          return;
+        }
+        const ev = parseHookEvent(await readBody(req));
+        if (!ev) {
+          res.writeHead(400).end();
+          return;
         }
         deps.onEvent(ev);
         // Empty 2xx: Claude Code treats a text body as a non-blocking error.
@@ -82,6 +127,12 @@ export function startServer(port: number, host: string, deps: ServerDeps, log: (
       if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true });
       res.writeHead(404).end();
     } catch (e) {
+      if (e instanceof BodyTooLarge) {
+        // answer first so the client sees 413, then drop whatever is still arriving
+        if (!res.headersSent) res.writeHead(413, { connection: 'close' }).end();
+        res.once('finish', () => req.destroy());
+        return;
+      }
       log(`http error: ${(e as Error).message}`);
       if (!res.headersSent) res.writeHead(500).end();
     }
