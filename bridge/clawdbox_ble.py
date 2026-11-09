@@ -48,8 +48,11 @@ def log(msg):
 
 
 class Bridge:
-    def __init__(self, address, mode, slot, brightness):
+    def __init__(self, address, mode, slot, brightness, select_prefix=b"\x45\x05"):
         self.address = address
+        # bytes sent before the slot number to select a stored animation.
+        # 45 04 N plays Signal-channel presets (library default); 45 05 N is our guess for Custom 1.
+        self.select_prefix = select_prefix
         self.mode = mode
         self.slot = slot
         self.brightness = brightness
@@ -148,8 +151,9 @@ class Bridge:
         slot = self.slot_of.get(name)
         if slot is None:
             raise RuntimeError(f"{name} was not preloaded")
-        await self.with_retry(lambda: self.client.play_slot(slot))
-        emit(ev="shown", name=name, mode="slots", slot=slot)
+        payload = self.select_prefix + bytes([slot])
+        await self.with_retry(lambda: self.client.send_raw_payload(payload))
+        emit(ev="shown", name=name, mode="slots", slot=slot, payload=payload.hex())
 
     async def show_anim(self, name, frames):
         pixels = [[tuple(p) for p in f["pixels"]] for f in frames]
@@ -244,12 +248,13 @@ def main():
     ap.add_argument("--slot", type=int, default=0)
     ap.add_argument("--brightness", type=int)
     ap.add_argument("--scan", action="store_true", help="list devices and exit")
+    ap.add_argument("--select", default="4505", help="hex bytes sent before the slot number in slots mode (default 4505; 4504 = Signal presets)")
     a = ap.parse_args()
     if a.scan:
         asyncio.run(scan_only())
         return
     try:
-        asyncio.run(Bridge(a.address, a.mode, a.slot, a.brightness).run())
+        asyncio.run(Bridge(a.address, a.mode, a.slot, a.brightness, bytes.fromhex(a.select)).run())
     except KeyboardInterrupt:
         pass
 

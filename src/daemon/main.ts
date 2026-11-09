@@ -18,6 +18,7 @@ export interface DaemonConfig {
   ble?: boolean;
   bleAddress?: string;
   bleMode?: 'upload' | 'stream' | 'slots';
+  bleSelect?: string;
   python?: string;
   channel?: number;
   mock: boolean;
@@ -61,7 +62,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
 
   let device: Display;
   if (cfg.ble) {
-    device = new BleDisplay({ address: cfg.bleAddress, mode: cfg.bleMode, brightness: cfg.brightness, python: cfg.python, repoRoot: repoRoot(), log });
+    device = new BleDisplay({ address: cfg.bleAddress, mode: cfg.bleMode, select: cfg.bleSelect, brightness: cfg.brightness, python: cfg.python, repoRoot: repoRoot(), log });
   } else {
     let link: Link;
     if (cfg.mock) link = new MockLink(cfg.verbose);

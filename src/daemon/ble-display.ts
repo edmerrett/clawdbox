@@ -13,6 +13,8 @@ import { Display } from './display.js';
 export interface BleOptions {
   address?: string;
   mode?: 'upload' | 'stream' | 'slots';
+  /** slots mode: hex bytes sent before the slot number (default 4505). */
+  select?: string;
   brightness?: number;
   python?: string;
   repoRoot: string;
@@ -67,6 +69,7 @@ export class BleDisplay implements Display {
     const args = [script, '--mode', this.opts.mode ?? 'upload'];
     if (this.opts.address) args.push('--address', this.opts.address);
     if (this.opts.brightness !== undefined) args.push('--brightness', String(this.opts.brightness));
+    if (this.opts.select) args.push('--select', this.opts.select);
     this.log(`starting bridge: ${python} ${args.join(' ')}`);
     const proc = spawn(python, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
@@ -161,7 +164,7 @@ export class BleDisplay implements Display {
         if (this.opts.mode === 'slots') await this.waitPreloaded();
         const ev = await this.request(msg);
         this.pushes++;
-        this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot})` : ''}`);
+        this.log(`showing ${state}${ev.seconds ? ` (${ev.seconds}s upload)` : ''}${ev.slot !== undefined ? ` (slot ${ev.slot}, sent ${ev.payload})` : ''}`);
       })
       .catch((e) => {
         this.lastError = (e as Error).message;
