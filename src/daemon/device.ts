@@ -20,13 +20,21 @@ export class Device {
   private readonly log: (msg: string) => void;
   /** Incremented on every successful push; lets the UI show device status. */
   pushes = 0;
+  /** Messages received from the box; proof it is parsing what we send. */
+  replies = 0;
   lastError: string | null = null;
+  /** Pause after connect before the first write; the box drops bytes sent too early. */
+  settleMs = 500;
 
   constructor(
     private readonly link: Link,
     private readonly opts: DeviceOptions = {},
   ) {
     this.log = opts.log ?? (() => {});
+    link.on('data', (buf: Buffer) => {
+      this.replies++;
+      this.log(`reply: ${buf.toString('hex')}`);
+    });
     link.on('closed', (err?: Error) => {
       if (this.closed) return; // we hung up on purpose
       this.lastError = err?.message ?? 'link closed';
@@ -59,6 +67,7 @@ export class Device {
           this.backoffMs = 1000;
           this.lastError = null;
           this.log('connected');
+          await sleep(this.settleMs);
           if (this.opts.brightness !== undefined) await this.rawWrite([encodeBrightness(this.opts.brightness)]);
         } catch (e) {
           this.lastError = (e as Error).message;
@@ -107,6 +116,12 @@ export class Device {
   async setBrightness(percent: number): Promise<void> {
     await this.ensureConnected();
     await this.rawWrite([encodeBrightness(percent)]);
+  }
+
+  /** Send arbitrary pre-encoded messages (diagnostics). */
+  async send(msgs: Buffer[]): Promise<void> {
+    await this.ensureConnected();
+    await this.rawWrite(msgs);
   }
 
   close(): void {

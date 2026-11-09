@@ -55,7 +55,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   if (cfg.mock) link = new MockLink(cfg.verbose);
   else {
     if (!cfg.mac) throw new Error('--mac XX:XX:XX:XX:XX:XX is required (or --mock). Run "clawdbox discover" to find it.');
-    link = new RfcommLink(cfg.mac, cfg.channel);
+    link = new RfcommLink(cfg.mac, cfg.channel, 15_000, log);
   }
   const device = new Device(link, { brightness: cfg.brightness, log });
   device.prepare(anims);
@@ -94,7 +94,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         pending: sched.pending,
         forced,
         sessions: Object.fromEntries([...reducer.sessions].map(([k, v]) => [k, v])),
-        device: { label: link.label, connected: device.connected, pushes: device.pushes, lastError: device.lastError },
+        device: { label: link.label, connected: device.connected, pushes: device.pushes, replies: device.replies, lastError: device.lastError },
         uptimeSec: Math.round(process.uptime()),
       }),
       previewHtmlPath,

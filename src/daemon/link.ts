@@ -35,7 +35,18 @@ export class MockLink extends EventEmitter implements Link {
   }
 }
 
+export interface BtService {
+  name?: string;
+  channel: number;
+}
+export interface BtPairedDevice {
+  name: string;
+  address: string;
+  services?: BtService[];
+}
+
 interface BtSerial extends EventEmitter {
+  listPairedDevices(cb: (devices: BtPairedDevice[]) => void): void;
   findSerialPortChannel(address: string, ok: (channel: number) => void, fail?: () => void): void;
   connect(address: string, channel: number, ok: () => void, fail?: (err?: Error) => void): void;
   write(buffer: Buffer, cb: (err?: Error) => void): void;
@@ -43,15 +54,34 @@ interface BtSerial extends EventEmitter {
   isOpen(): boolean;
 }
 
+/** Compare Bluetooth addresses regardless of case and separator ("-" on macOS, ":" elsewhere). */
+export function sameAddress(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^0-9a-f]/g, '');
+  return norm(a) === norm(b);
+}
+
+/**
+ * Pick the Serial Port Profile channel from a device's SDP service list.
+ * The Evo advertises several RFCOMM services (hands-free for calls, SPP for
+ * commands). The JieLi chip names its serial service "JL_SPP".
+ */
+export function pickSppChannel(services: BtService[]): number | undefined {
+  const named = services.find((s) => s.channel > 0 && /spp|serial/i.test(s.name ?? ''));
+  return named?.channel;
+}
+
 export class RfcommLink extends EventEmitter implements Link {
   private port: BtSerial | null = null;
   open = false;
   readonly label: string;
+  /** Channel actually used by the last successful connect. */
+  channelUsed?: number;
 
   constructor(
     private readonly address: string,
     private readonly channel?: number,
     private readonly connectTimeoutMs = 15_000,
+    private readonly log: (m: string) => void = () => {},
   ) {
     super();
     this.label = `rfcomm ${address}`;
@@ -70,6 +100,8 @@ export class RfcommLink extends EventEmitter implements Link {
     const port = new mod.BluetoothSerialPort();
     this.port = port;
     const channel = this.channel ?? (await this.findChannel(port));
+    this.channelUsed = channel;
+    this.log(`opening RFCOMM channel ${channel}${this.channel === undefined ? ' (auto)' : ''}`);
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error(`connect to ${this.address} ch ${channel} timed out`)), this.connectTimeoutMs);
       port.connect(
@@ -97,18 +129,45 @@ export class RfcommLink extends EventEmitter implements Link {
     port.on('data', (buf: Buffer) => this.emit('data', buf));
   }
 
-  private findChannel(port: BtSerial): Promise<number> {
+  /** List the SDP services of this device as the OS has them cached. */
+  services(port: BtSerial): Promise<BtService[]> {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => resolve([]), 5000);
+      try {
+        port.listPairedDevices((devices) => {
+          clearTimeout(t);
+          const d = devices.find((x) => sameAddress(x.address, this.address));
+          resolve(d?.services ?? []);
+        });
+      } catch {
+        clearTimeout(t);
+        resolve([]);
+      }
+    });
+  }
+
+  /**
+   * Prefer the service literally named SPP/serial. The library's own
+   * findSerialPortChannel matches the generic RFCOMM UUID and can return the
+   * hands-free channel instead, which accepts bytes and ignores them.
+   */
+  private async findChannel(port: BtSerial): Promise<number> {
+    const services = await this.services(port);
+    if (services.length) this.log(`services: ${services.map((s) => `${s.name ?? '?'}=${s.channel}`).join(', ')}`);
+    const spp = pickSppChannel(services);
+    if (spp) return spp;
     return new Promise((resolve) => {
       const t = setTimeout(() => resolve(1), 8000);
       port.findSerialPortChannel(
         this.address,
         (ch) => {
           clearTimeout(t);
+          this.log(`no service named SPP; library suggests channel ${ch}`);
           resolve(ch);
         },
         () => {
           clearTimeout(t);
-          resolve(1); // the Evo's SPP channel is 1 on every unit seen so far
+          resolve(1);
         },
       );
     });

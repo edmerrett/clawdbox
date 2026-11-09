@@ -9,7 +9,9 @@ import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
 import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath } from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
-import { MockLink, RfcommLink } from './daemon/link.js';
+import { BtPairedDevice, MockLink, RfcommLink, pickSppChannel } from './daemon/link.js';
+import { encodeBrightness, encodeImage } from './protocol/divoom.js';
+import { Rgb, PIXELS } from './anim/types.js';
 import { Device } from './daemon/device.js';
 import { loadAnimSet } from './anim/load.js';
 
@@ -20,6 +22,7 @@ Usage:
                   [--hold-ms 2000] [--idle-ms 90000] [--channel N] [-v]
   clawdbox discover                 list paired Bluetooth devices (needs bluetooth-serial-port)
   clawdbox send <state> --mac MAC [--anims DIR]      push one animation and exit (smoke test)
+  clawdbox diag --mac MAC [--channel N]              step through brightness, still image, animation; log replies
   clawdbox sprites [--out art/anims]                 write the built-in Clawd sprites as JSON
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
   clawdbox install-hooks [--url http://127.0.0.1:7676/event] [--http]   merge hooks into ~/.claude/settings.json
@@ -149,8 +152,14 @@ async function main() {
       const mod = await import('bluetooth-serial-port');
       const bt = new mod.BluetoothSerialPort();
       await new Promise<void>((done) =>
-        bt.listPairedDevices((devices: { name: string; address: string }[]) => {
-          for (const d of devices) console.log(`${d.address}  ${d.name}`);
+        bt.listPairedDevices((devices: BtPairedDevice[]) => {
+          for (const d of devices) {
+            const svc = (d.services ?? []).filter((s) => s.channel > 0);
+            const spp = pickSppChannel(svc);
+            console.log(`${d.address}  ${d.name}`);
+            for (const s of svc) console.log(`    channel ${s.channel}  ${s.name ?? '(unnamed)'}${s.channel === spp ? '   <- serial port, will be used' : ''}`);
+            if (svc.length && !spp) console.log('    (no service named SPP/serial; pass --channel to pick one)');
+          }
           if (!devices.length) console.log('no paired devices; pair the Timebox in System Settings > Bluetooth first');
           done();
         }),
@@ -161,7 +170,7 @@ async function main() {
     case 'send': {
       const state = positionals[1];
       if (!state || !isState(state)) throw new Error(`send needs a state: ${STATES.join(', ')}`);
-      const link = v.mock ? new MockLink(true) : new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined);
+      const link = v.mock ? new MockLink(true) : new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
       const device = new Device(link, { log: console.log, brightness: v.brightness ? Number(v.brightness) : undefined });
       const dir = defaultAnims();
       device.prepare(dir ? loadAnimSet(dir) : clawdSprites());
@@ -170,6 +179,33 @@ async function main() {
       await new Promise((r) => setTimeout(r, 800));
       device.close();
       console.log('done');
+      return;
+    }
+
+    case 'diag': {
+      // Step through commands of increasing complexity so we can see where the box stops reacting.
+      const link = new RfcommLink(requireMac(), v.channel ? Number(v.channel) : undefined, 15_000, console.log);
+      const device = new Device(link, { log: console.log });
+      device.prepare(clawdSprites());
+      const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const step = async (what: string, fn: () => Promise<void>) => {
+        console.log(`\n--- ${what}`);
+        await fn();
+        await pause(2500);
+        console.log(`    replies so far: ${device.replies}`);
+      };
+      await device.ensureConnected();
+      console.log(`connected on channel ${link.channelUsed}`);
+      await step('1. brightness 10% (panel should dim)', () => device.send([encodeBrightness(10)]));
+      await step('2. brightness 100% (panel should brighten)', () => device.send([encodeBrightness(100)]));
+      const solid = (c: Rgb): Rgb[] => Array.from({ length: PIXELS }, () => c);
+      await step('3. still image: solid red', () => device.send([encodeImage(solid([255, 0, 0]))]));
+      const checker: Rgb[] = Array.from({ length: PIXELS }, (_, i) => (((i % 16) + Math.floor(i / 16)) % 2 ? [0, 0, 255] : [0, 255, 0]));
+      await step('4. still image: green/blue checkerboard', () => device.send([encodeImage(checker)]));
+      await step('5. animation: writing', () => device.show('writing'));
+      console.log(`\ndone. channel=${link.channelUsed} replies=${device.replies}`);
+      console.log('Tell me the first step where the panel changed, and whether any "reply:" lines appeared.');
+      device.close();
       return;
     }
 
