@@ -67,11 +67,14 @@ npm install && npm run build
    node dist/cli.js install-hooks
    ```
    Start a Claude Code session and watch the character change as Claude works.
-5. **Run it at login** as a launchd agent that restarts itself:
+5. **Run it at login.** This writes a tiny `~/Applications/Clawdbox.app` wrapper (macOS grants Bluetooth per app, so
+   a bare launchd job would be killed on its first Bluetooth call) and a launchd agent that keeps it running:
    ```bash
    node dist/cli.js install-launchd --ble
    ```
-   Logs land in `~/Library/Logs/clawdbox/`.
+   Allow the one-time "Clawdbox would like to use Bluetooth" prompt. Logs land in `~/Library/Logs/clawdbox/`.
+   `uninstall-launchd` removes both.
+6. **Optional:** `npm link` puts a `clawdbox` command on your PATH so every command above works from any folder.
 
 No device yet? `npm run dev` runs the daemon with a mock link so you can develop hooks and art on the previewer.
 
@@ -113,7 +116,7 @@ Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the 
 --serial /dev/cu.NAME     use the OS serial device for the paired Evo instead of opening RFCOMM ourselves
 --channel N               RFCOMM channel; auto-detected via SDP, falls back to 1
 --anims DIR               animation directory (default art/anims if present, else placeholders)
---brightness 0-100        set panel brightness on connect
+--brightness 0-100        panel brightness, applied on every (re)connect; default 100
 --hold-ms 2000            minimum time a state stays on screen
 --idle-ms 90000           silence before a busy state falls back to idle
 --port 7676               HTTP port (hooks must match)

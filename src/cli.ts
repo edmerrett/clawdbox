@@ -7,7 +7,7 @@ import { execSync } from 'node:child_process';
 import { DEFAULT_CONFIG, repoRoot, runDaemon } from './daemon/main.js';
 import { clawdSprites } from './anim/clawd.js';
 import { writeAnims, buildAnims } from './tools/build-anims.js';
-import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath } from './tools/install.js';
+import { installHooks, uninstallHooks, launchdPlist, launchdPlistPath, LAUNCHD_LABEL, settingsPath, appBundleFiles, appBundlePath, writeAppBundle } from './tools/install.js';
 import { isState, STATES } from './anim/types.js';
 import { BtPairedDevice, Link, MockLink, RfcommLink, SerialLink, pickSppChannel } from './daemon/link.js';
 import { readdirSync } from 'node:fs';
@@ -22,7 +22,7 @@ const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 
 Usage:
   clawdbox daemon (--ble [--address UUID] [--upload | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
-                  [--anims DIR] [--port 7676] [--brightness 0-100] [--hold-ms 2000] [--idle-ms 90000] [-v]
+                  [--anims DIR] [--port 7676] [--brightness 0-100 (default 100)] [--hold-ms 2000] [--idle-ms 90000] [-v]
       --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
                  default streams stills at the frame rate. --upload: send the loop per change (shows a transfer screen).
                  --slots: experimental, preload all loops and switch by slot
@@ -100,7 +100,7 @@ async function main() {
         mock: v.mock,
         port,
         animsDir: defaultAnims(),
-        brightness: v.brightness ? Number(v.brightness) : undefined,
+        brightness: v.brightness ? Number(v.brightness) : DEFAULT_CONFIG.brightness,
         minHoldMs: num(v['hold-ms'], DEFAULT_CONFIG.minHoldMs),
         idleAfterMs: num(v['idle-ms'], DEFAULT_CONFIG.idleAfterMs),
         verbose: v.verbose,
@@ -157,7 +157,12 @@ async function main() {
       if (anims) args.push('--anims', anims);
       if (v.brightness) args.push('--brightness', v.brightness);
       if (v.channel) args.push('--channel', v.channel);
-      const plist = launchdPlist({ node: process.execPath, cli, args, logDir, cwd: repoRoot() });
+      // 1. app bundle so macOS grants Bluetooth to the daemon
+      const appDir = appBundlePath();
+      writeAppBundle(appDir, appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot() }));
+      const launcher = join(appDir, 'Contents', 'MacOS', 'clawdbox');
+      // 2. launchd agent that keeps it running
+      const plist = launchdPlist({ launcher, logDir, cwd: repoRoot() });
       const path = launchdPlistPath();
       mkdirSync(join(path, '..'), { recursive: true });
       writeFileSync(path, plist);
@@ -166,7 +171,9 @@ async function main() {
       } catch {
         console.warn('launchctl bootstrap failed; load it manually with: launchctl bootstrap gui/$(id -u) ' + path);
       }
-      console.log(`launchd agent written to ${path}\nlogs: ${logDir}`);
+      console.log(`app bundle:    ${appDir}\nlaunchd agent: ${path}\nlogs:          ${logDir}`);
+      console.log('\nIf macOS asks whether Clawdbox may use Bluetooth, allow it. Check with:  tail -f ' + join(logDir, 'clawdbox.log'));
+      console.log('Running daemon in a terminal? Stop it first (Ctrl-C), or the agent will fail to bind port 7676.');
       return;
     }
     case 'uninstall-launchd': {
@@ -177,7 +184,9 @@ async function main() {
         /* not loaded */
       }
       if (existsSync(path)) execSync(`rm "${path}"`);
-      console.log('launchd agent removed');
+      const appDir = appBundlePath();
+      if (existsSync(appDir)) execSync(`rm -rf "${appDir}"`);
+      console.log('launchd agent and app bundle removed');
       return;
     }
 
@@ -317,8 +326,9 @@ function bleMode(): 'upload' | 'stream' | 'slots' {
 
 /** Build a display from --ble / --mock / --serial / --mac. */
 function makeDisplay(log: (m: string) => void): Display {
-  if (v.ble) return new BleDisplay({ address: v.address, mode: bleMode(), select: v.select, brightness: v.brightness ? Number(v.brightness) : undefined, python: v.python, repoRoot: repoRoot(), log });
-  return new Device(makeLink(), { log, brightness: v.brightness ? Number(v.brightness) : undefined });
+  const brightness = v.brightness ? Number(v.brightness) : DEFAULT_CONFIG.brightness;
+  if (v.ble) return new BleDisplay({ address: v.address, mode: bleMode(), select: v.select, brightness, python: v.python, repoRoot: repoRoot(), log });
+  return new Device(makeLink(), { log, brightness });
 }
 
 /** Build the device link from --mock / --serial / --mac. */

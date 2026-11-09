@@ -7,7 +7,7 @@
   "engines": { "node": ">=20" },
   "bin": { "clawdbox": "dist/cli.js" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts daemon --mock",
     "daemon": "tsx src/cli.ts daemon",
     "test": "tsx --test test/*.test.ts",

@@ -25,7 +25,8 @@ export interface DaemonConfig {
   port: number;
   host: string;
   animsDir?: string;
-  brightness?: number;
+  /** Panel brightness applied on every connect (0-100). */
+  brightness: number;
   minHoldMs: number;
   idleAfterMs: number;
   sessionTtlMs: number;
@@ -34,6 +35,7 @@ export interface DaemonConfig {
 
 export const DEFAULT_CONFIG: DaemonConfig = {
   mock: false,
+  brightness: 100,
   port: 7676,
   host: '127.0.0.1',
   minHoldMs: DEFAULT_SCHEDULER.minHoldMs,
