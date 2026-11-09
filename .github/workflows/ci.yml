@@ -72,7 +72,7 @@ jobs:
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           echo "--- launch the real menu bar app and read its status item"
-          open menubar/build/Clawdbar.app
+          open menubar/build/Clawdbar.app || (menubar/build/Clawdbar.app/Contents/MacOS/Clawdbar >/dev/null 2>&1 &)
           sleep 5
           pgrep -x Clawdbar >/dev/null && echo "Clawdbar is running as a GUI app"
           # Read the live NSStatusItem title through the accessibility tree (may need permission on some runners).
