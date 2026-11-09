@@ -3,7 +3,7 @@
  * "Clawd with laptop" GIF (12x8: wide orange body, stubby side arms, two square
  * eyes, four legs). The poses follow the official Claude Code sticker set:
  * Magnifier (reading), Skateboard (running), Lightbulb (thinking), Shiny
- * (ultrathink), Coffee and Headphones (long idle), Happy, Dizzy, Wave, Heart.
+ * (ultrathink), Coffee and Headphones (long idle), Happy, Wave, Heart, plus a crying Clawd for errors.
  *
  * Every state shares the same feet row so switching never teleports the
  * character. Edit the ASCII poses here and run `clawdbox sprites`, or drop
@@ -307,20 +307,29 @@ export function done(): Anim {
   };
 }
 
-/** Clawd Dizzy: spiral eyes, swaying. */
+/** Clawd crying: slanted sad eyes, a tear dripping from each, spray off the cheeks, puddle at the feet. */
 export function error(): Anim {
-  const spiralA = ['KKK', '..K', 'KKK'];
-  const spiralB = ['KKK', 'K..', 'KKK'];
+  const TEAR: Rgb = [0x50, 0xb0, 0xff];
+  // Two-row eyes with the top pixel pulled inward: brows down, eyes sad.
+  const sad = STAND.map((r, i) => (i === 0 ? '..OOKOOKOO..' : i === 1 ? '..OKOOOOKO..' : r));
   return {
     name: 'error',
     frames: [0, 1, 2, 3].map((i) =>
-      frame(200, (c) => {
-        const dx = i === 1 ? -1 : i === 3 ? 1 : 0;
-        const noEyes = STAND.map((r) => r.replace(/K/g, 'O'));
-        stand(c, noEyes, dx, 0);
-        const y = top(STAND);
-        c.blit(i % 2 ? spiralA : spiralB, X + dx + 2, y, PAL);
-        c.blit(i % 2 ? spiralB : spiralA, X + dx + 7, y, PAL);
+      frame(230, (c) => {
+        const dy = i % 2; // shudder
+        stand(c, sad, 0, dy);
+        const y = top(STAND) + dy;
+        // one tear under each eye, dripping three rows then starting again
+        const t = y + 2 + (i % 3);
+        c.set(X + 3, t, TEAR);
+        c.set(X + 8, t, TEAR);
+        // spray flying off the cheeks on alternate frames
+        if (i % 2) {
+          c.set(X + 1, y + 1, TEAR);
+          c.set(X + 10, y + 1, TEAR);
+        }
+        // puddle
+        c.rect(i >= 2 ? 5 : 6, 15, i >= 2 ? 6 : 4, 1, TEAR);
       }),
     ),
   };

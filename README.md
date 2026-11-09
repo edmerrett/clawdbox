@@ -95,7 +95,7 @@ reactions layered on top; long-idle stages appear when nothing has happened for 
 | `vibing` | Clawd Headphones | 10 min after coffee; then the two alternate |
 | `wave` (flash) | Clawd wave | `SessionStart` with source `startup` |
 | `done` (flash) | Clawd happy | `Stop` after a turn that ran 10 s or more |
-| `error` (flash) | Clawd Dizzy | `PostToolUseFailure` (not interrupts), `StopFailure` |
+| `error` (flash) | (crying Clawd) | `PostToolUseFailure` (not interrupts), `StopFailure` |
 | `heart` (flash) | clawd heart | your prompt says thanks |
 
 Flashes last 3.5 s (`--flash-ms`) and jump the hold; `needs-you` also jumps it. Events from subagents (`agent_id`
@@ -111,7 +111,7 @@ reports a non-blocking error for each event while the daemon is down). The gener
 
 ## Art
 The built-in sprites (`src/anim/clawd.ts`) use the 12x8 Clawd body traced from the Clawd-with-laptop GIF, posed
-after the Claude Code sticker set (magnifier, skateboard, lightbulb, shiny, coffee, headphones, happy, dizzy, wave,
+after the Claude Code sticker set (magnifier, skateboard, lightbulb, shiny, coffee, headphones, happy, wave,
 heart). `clawdbox sprites` regenerates `art/anims/*.json` from them. To replace or refine them, draw in
 Aseprite/LibreSprite or Piskel and run `clawdbox build-anims`, which writes the same `art/anims/<state>.json` files.
 [`art/README.md`](art/README.md) has the full guide and the design rules for tiny LED matrices.
