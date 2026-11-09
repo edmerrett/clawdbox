@@ -18,6 +18,12 @@ struct DaemonState: Decodable {
     struct Session: Decodable {
         let state: String
     }
+    struct Update: Decodable {
+        let version: String
+        let commit: String?
+        let latestCommit: String?
+        let updateAvailable: Bool
+    }
     let current: String
     let pending: String
     let forced: String?
@@ -25,6 +31,8 @@ struct DaemonState: Decodable {
     let sessions: [String: Session]
     let device: Device
     let uptimeSec: Int
+    let repoRoot: String?
+    let update: Update?
 }
 
 let daemonBase = URL(string: ProcessInfo.processInfo.environment["CLAWDBOX_URL"] ?? "http://127.0.0.1:7676")!
@@ -38,15 +46,17 @@ struct Rendering {
     let showing: String
     let transport: String
     let sessions: String
+    /// Non-nil when the daemon reports a newer clawdbox on origin/main.
+    let update: String?
 
     static func offline() -> Rendering {
         Rendering(title: " offline", dimmed: true, connection: "Daemon not running",
-                  showing: "Start it with: clawdbox daemon --ble", transport: "", sessions: "")
+                  showing: "Start it with: clawdbox daemon --ble", transport: "", sessions: "", update: nil)
     }
 
-    init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String) {
+    init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String, update: String?) {
         self.title = title; self.dimmed = dimmed; self.connection = connection
-        self.showing = showing; self.transport = transport; self.sessions = sessions
+        self.showing = showing; self.transport = transport; self.sessions = sessions; self.update = update
     }
 
     init(_ s: DaemonState) {
@@ -62,6 +72,13 @@ struct Rendering {
         transport = "Transport: \(s.transport ?? s.device.label)"
         let n = s.sessions.count
         sessions = "\(n) Claude session\(n == 1 ? "" : "s") · up \(s.uptimeSec / 60) min"
+        if let u = s.update, u.updateAvailable {
+            let from = u.commit.map { String($0.prefix(7)) } ?? "?"
+            let to = u.latestCommit.map { String($0.prefix(7)) } ?? "?"
+            update = "Update available: \(from) → \(to)"
+        } else {
+            update = nil
+        }
     }
 }
 
@@ -123,6 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let showingItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let transportItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let sessionsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let updateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let installUpdateItem = NSMenuItem(title: "Install Update…", action: #selector(installUpdate), keyEquivalent: "u")
+    private var repoRoot: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -136,10 +156,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        for item in [connectionItem, showingItem, transportItem, sessionsItem] {
+        for item in [connectionItem, showingItem, transportItem, sessionsItem, updateItem] {
             item.isEnabled = false
             menu.addItem(item)
         }
+        updateItem.isHidden = true
+        installUpdateItem.target = self
+        installUpdateItem.isHidden = true
+        menu.addItem(installUpdateItem)
         menu.addItem(.separator())
 
         let open = NSMenuItem(title: "Open Previewer", action: #selector(openPreviewer), keyEquivalent: "o")
@@ -199,6 +223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showingItem.title = r.showing
         transportItem.title = r.transport
         sessionsItem.title = r.sessions
+        repoRoot = lastState?.repoRoot
+        updateItem.title = r.update ?? ""
+        updateItem.isHidden = r.update == nil
+        installUpdateItem.isHidden = r.update == nil || repoRoot == nil
     }
 
     // MARK: actions
@@ -224,6 +252,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? task.run()
     }
 
+    /// Runs scripts/update.sh in the daemon's checkout. It pulls, rebuilds, restarts the
+    /// daemon and relaunches this app if the menu bar sources changed.
+    @objc private func installUpdate() {
+        guard let root = repoRoot else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [root + "/scripts/update.sh"]
+        let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
+        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        let log = logDir.appendingPathComponent("update.log")
+        if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
+        if let handle = try? FileHandle(forWritingTo: log) {
+            handle.seekToEndOfFile()
+            task.standardOutput = handle
+            task.standardError = handle
+        }
+        updateItem.title = "Updating… (see ~/Library/Logs/clawdbox/update.log)"
+        installUpdateItem.isHidden = true
+        try? task.run()
+    }
+
     @objc private func showLogs() {
         let logs = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/clawdbox/clawdbox.log")
@@ -243,6 +292,7 @@ if CommandLine.arguments.contains("--check") {
         print(r.connection)
         print(r.showing)
         print(r.sessions)
+        if let u = r.update { print(u) }
         exit(0)
     case .failure(let error):
         let r = Rendering.offline()

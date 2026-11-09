@@ -10,6 +10,8 @@
 - `install-hooks`, `install-launchd` (via a Bluetooth-declaring app bundle), `diag`, `scan`, `ble-scan`, `send`.
 - Clawdbar, a Swift menu bar app showing connection and current state.
 - Browser previewer with LED gamma.
+- `clawdbox update`, an optional six-hourly auto-update agent, update detection in the daemon and menu bar, and a
+  tag-triggered release workflow that publishes Clawdbar.app and the npm tarball.
 
 ### Security
 - `/event` requires `application/json` and a JSON object; cross-origin POSTs are refused; bodies over 1 MB get 413.

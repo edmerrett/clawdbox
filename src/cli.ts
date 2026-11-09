@@ -17,6 +17,9 @@ import {
   appBundleFiles,
   appBundlePath,
   writeAppBundle,
+  updaterPlist,
+  updaterPlistPath,
+  UPDATER_LABEL,
 } from './tools/install.js';
 import { isState, STATES, Rgb, PIXELS } from './anim/types.js';
 import { BtPairedDevice, Link, MockLink, RfcommLink, SerialLink, pickSppChannel } from './daemon/link.js';
@@ -31,7 +34,7 @@ const HELP = `clawdbox - Claude Code companion for the Divoom TimeBox Evo
 Usage:
   clawdbox daemon (--ble [--address UUID] [--upload | --slots] | --mac XX:XX:XX:XX:XX:XX | --serial /dev/cu.NAME | --mock)
                   [--anims DIR] [--port 7676] [--brightness 0-100 (default 100)] [--hold-ms 2000] [--idle-ms 90000]
-                  [--coffee-min 10 (long-idle stages start after N min; 0 disables)] [--flash-ms 3500] [-v]
+                  [--coffee-min 10 (long-idle stages start after N min; 0 disables)] [--flash-ms 3500] [--no-update-check] [-v]
       --ble      newer TimeBox-Evo-audio / Backpack M (BLE, via bridge/clawdbox_ble.py + divoom-protocol)
                  default streams stills at the frame rate. --upload: send the loop per change (shows a transfer screen).
                  --slots: experimental, preload all loops and switch by slot
@@ -46,7 +49,10 @@ Usage:
   clawdbox build-anims <sheet.json | strips-dir> [--out art/anims] [--fps 6]
   clawdbox install-hooks [--url http://127.0.0.1:7676/event] [--http]   merge hooks into ~/.claude/settings.json
   clawdbox uninstall-hooks
-  clawdbox install-launchd (--ble | --mac MAC) [--anims DIR] [--brightness N]   write + load ~/Library/LaunchAgents/${LAUNCHD_LABEL}.plist
+  clawdbox install-launchd (--ble | --mac MAC) [--anims DIR] [--brightness N] [--auto-update]
+                                                     write + load ~/Library/LaunchAgents/${LAUNCHD_LABEL}.plist
+                                                     (--auto-update also installs a 6-hourly "clawdbox update" agent)
+  clawdbox update [--check | --force]                pull main, rebuild, rebuild the menu bar app if changed, restart the daemon
   clawdbox uninstall-launchd
   clawdbox show <state> [--port 7676]                tell a running daemon to show a state (testing)
 
@@ -78,6 +84,10 @@ const { values: v, positionals } = parseArgs({
     url: { type: 'string' },
     http: { type: 'boolean', default: false },
     verbose: { type: 'boolean', short: 'v', default: false },
+    'no-update-check': { type: 'boolean', default: false },
+    'auto-update': { type: 'boolean', default: false },
+    force: { type: 'boolean', default: false },
+    check: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
 });
@@ -127,6 +137,7 @@ async function main() {
         idleStageAfterMs: coffeeMin * 60_000,
         idleStageCycleMs: Math.max(60_000, coffeeMin * 60_000),
         flashMs: numFlag('flash-ms', v['flash-ms'], DEFAULT_CONFIG.flashMs, 500, 60_000),
+        updateCheck: !v['no-update-check'],
         verbose: v.verbose,
       });
       return;
@@ -202,6 +213,20 @@ async function main() {
       } catch {
         console.warn(`launchctl bootstrap failed; load it manually with: launchctl bootstrap ${domain} ${path}`);
       }
+      if (v['auto-update']) {
+        const upath = updaterPlistPath();
+        writeFileSync(
+          upath,
+          updaterPlist({ script: join(repoRoot(), 'scripts', 'update.sh'), logDir, cwd: repoRoot(), intervalSec: 6 * 3600 }),
+        );
+        try {
+          execFileSync('launchctl', ['bootout', `${domain}/${UPDATER_LABEL}`], { stdio: 'ignore' });
+        } catch {
+          /* not loaded yet */
+        }
+        execFileSync('launchctl', ['bootstrap', domain, upath], { stdio: 'inherit' });
+        console.log(`auto-update:   ${upath} (every 6 h, log in ${join(logDir, 'update.log')})`);
+      }
       console.log(`app bundle:    ${appDir}\nlaunchd agent: ${path}\nlogs:          ${logDir}`);
       console.log('\nIf macOS asks whether Clawdbox may use Bluetooth, allow it. Check with:  tail -f ' + join(logDir, 'clawdbox.log'));
       console.log('Running daemon in a terminal? Stop it first (Ctrl-C), or the agent will fail to bind port 7676.');
@@ -214,9 +239,15 @@ async function main() {
       } catch {
         /* not loaded */
       }
+      try {
+        execFileSync('launchctl', ['bootout', `gui/${process.getuid?.() ?? 501}/${UPDATER_LABEL}`], { stdio: 'ignore' });
+      } catch {
+        /* not loaded */
+      }
       rmSync(path, { force: true });
+      rmSync(updaterPlistPath(), { force: true });
       rmSync(appBundlePath(), { recursive: true, force: true });
-      console.log('launchd agent and app bundle removed');
+      console.log('launchd agents and app bundle removed');
       return;
     }
 
@@ -343,6 +374,18 @@ async function main() {
           : 'The box never replied. On the newer TimeBox-Evo-audio the Classic serial port ignores commands; use --ble.',
       );
       device.close();
+      return;
+    }
+
+    case 'update': {
+      const args = [join(repoRoot(), 'scripts', 'update.sh')];
+      if (v.force) args.push('--force');
+      if (v.check) args.push('--check');
+      try {
+        execFileSync('/bin/bash', args, { stdio: 'inherit', cwd: repoRoot() });
+      } catch (e) {
+        process.exitCode = (e as { status?: number }).status ?? 1;
+      }
       return;
     }
 

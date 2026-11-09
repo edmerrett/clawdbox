@@ -10,6 +10,8 @@ import { Link, MockLink, RfcommLink, SerialLink } from './link.js';
 import { HookEvent, Reducer } from './reducer.js';
 import { DEFAULT_SCHEDULER, Scheduler } from './scheduler.js';
 import { startServer } from './server.js';
+import { UpdateChecker } from './update-check.js';
+import { readFileSync } from 'node:fs';
 
 export interface DaemonConfig {
   mac?: string;
@@ -34,6 +36,8 @@ export interface DaemonConfig {
   idleStageAfterMs: number;
   idleStageCycleMs: number;
   sessionTtlMs: number;
+  /** Check origin/main for updates (every 6 h) and report it in /state. */
+  updateCheck: boolean;
   verbose: boolean;
 }
 
@@ -49,12 +53,21 @@ export const DEFAULT_CONFIG: DaemonConfig = {
   idleStageAfterMs: DEFAULT_SCHEDULER.idleStageAfterMs,
   idleStageCycleMs: DEFAULT_SCHEDULER.idleStageCycleMs,
   sessionTtlMs: 6 * 60 * 60 * 1000,
+  updateCheck: true,
   verbose: false,
 };
 
 export function repoRoot(): string {
   // src/daemon/main.ts -> repo root (works from dist/ too)
   return join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
+export function packageVersion(): string {
+  try {
+    return (JSON.parse(readFileSync(join(repoRoot(), 'package.json'), 'utf8')) as { version: string }).version;
+  } catch {
+    return '0.0.0';
+  }
 }
 
 export async function runDaemon(cfg: DaemonConfig): Promise<void> {
@@ -138,6 +151,9 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     log(`forced ${s}`);
   };
 
+  const updates = new UpdateChecker(repoRoot(), packageVersion(), log);
+  if (cfg.updateCheck) updates.start(6 * 60 * 60 * 1000);
+
   const previewHtmlPath = join(repoRoot(), 'web', 'index.html');
   const server = startServer(
     cfg.port,
@@ -154,6 +170,8 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         sessions: Object.fromEntries([...reducer.sessions].map(([k, v]) => [k, v])),
         device: { label: device.label, connected: device.connected, pushes: device.pushes, lastError: device.lastError },
         uptimeSec: Math.round(process.uptime()),
+        repoRoot: repoRoot(),
+        update: updates.info,
       }),
       previewHtmlPath,
     },

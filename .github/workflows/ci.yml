@@ -28,6 +28,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node dist/cli.js send idle --mock
+      - run: node dist/cli.js update --check || test $? -eq 1
   python:
     name: bridge (python ${{ matrix.python }})
     runs-on: ubuntu-latest

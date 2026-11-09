@@ -30,3 +30,16 @@ test('launchd plist runs the launcher, keeps it alive and logs', () => {
   assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
   assert.match(plist, /clawdbox\.log/);
 });
+
+test('updater plist runs the update script on an interval and logs', async () => {
+  const { updaterPlist } = await import('../src/tools/install.js');
+  const plist = updaterPlist({
+    script: '/Users/ed/clawdbox/scripts/update.sh',
+    logDir: '/Users/ed/Library/Logs/clawdbox',
+    cwd: '/Users/ed/clawdbox',
+    intervalSec: 21600,
+  });
+  assert.match(plist, /<string>\/bin\/bash<\/string>\s*<string>\/Users\/ed\/clawdbox\/scripts\/update.sh<\/string>/);
+  assert.match(plist, /<key>StartInterval<\/key>\s*<integer>21600<\/integer>/);
+  assert.match(plist, /update\.log/);
+});

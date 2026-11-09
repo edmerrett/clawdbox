@@ -1,0 +1,32 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint && npm test && npm run build
+      - name: build the menu bar app
+        run: |
+          menubar/build.sh build
+          ditto -c -k --keepParent menubar/build/Clawdbar.app Clawdbar-${GITHUB_REF_NAME}.zip
+      - name: pack the npm tarball
+        run: npm pack && mv clawdbox-*.tgz clawdbox-${GITHUB_REF_NAME}.tgz
+      - name: publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)
+          gh release create "$GITHUB_REF_NAME" \
+            --title "clawdbox $GITHUB_REF_NAME" \
+            --notes "${notes:-See CHANGELOG.md.}" \
+            Clawdbar-${GITHUB_REF_NAME}.zip clawdbox-${GITHUB_REF_NAME}.tgz

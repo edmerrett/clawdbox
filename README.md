@@ -94,6 +94,18 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt
    something looks off.
 7. **`clawdbox` from anywhere** (optional): `npm link`.
 
+## Updating
+
+```bash
+clawdbox update            # pull main, rebuild, rebuild Clawdbar if it changed, restart the daemon
+clawdbox update --check    # just say whether origin/main has moved
+```
+`install-launchd --ble --auto-update` adds a second launchd agent that runs the update every six hours (log in
+`~/Library/Logs/clawdbox/update.log`). The daemon also compares its commit with `origin/main` every six hours and
+reports it in `/state`; Clawdbar then shows "Update available" with an "Install Update…" item. `--no-update-check`
+turns the check off. Tagged releases (`v*`) are built by GitHub Actions and published with `Clawdbar.app` zipped
+and the npm tarball attached.
+
 No panel yet? `npm run dev` runs everything against a mock panel so you can develop hooks and art on the previewer.
 
 ## States and reactions
