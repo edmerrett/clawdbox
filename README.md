@@ -48,6 +48,21 @@ to start at login with automatic release updates, and waits for Clawd to appear 
 
 [Step-by-step install, daemon flags, hooks and updating →](docs/INSTALL.md)
 
+## In the menu bar
+
+<img src="docs/menubar.gif" alt="The Clawdbox menu: a small digital Divoom playing the current animation above the status lines and shortcuts" width="300" align="right">
+
+`Clawdbox.app` puts a little Clawd in your menu bar with the current state next to it (`reading`, `writing`,
+`needs-you`…). The icon dims when the panel is disconnected and reads `offline` when the daemon is not running.
+
+Click it and the menu opens on a small digital Divoom: the same 16×16 sprites, playing whatever the real panel is
+showing and switching as Claude does. Handy when the box is across the room, or not plugged in at all.
+
+Below it: connection, transport and session count, then **Open Previewer**, **Force State** (try any of the
+thirteen), **Restart Daemon**, **Show Logs** and, when a new release is out, **Install Update…**.
+
+<br clear="right">
+
 ## How it works
 
 ```
@@ -60,8 +75,7 @@ Claude Code ──hook──▶ private socket ──▶ clawdbox daemon ──�
 Claude Code's [hooks](https://code.claude.com/docs/en/hooks) fire on every tool call, prompt, permission request and
 stop. Each one posts a little JSON to the daemon's private Unix socket in the background and never waits. The daemon
 works out what Clawd should be doing, smooths the flicker of rapid tool calls, and streams the right loop to the
-panel. A browser previewer at <http://127.0.0.1:7676> shows the same thing; the menu bar shows connection and state,
-and clicking it opens a small digital Divoom playing the current animation.
+panel. A browser previewer at <http://127.0.0.1:7676> shows the same thing, and so does the menu bar.
 
 ## Make it yours
 
