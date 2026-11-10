@@ -1,5 +1,6 @@
 #!/bin/bash
-# Regenerate the explainer narration with Piper (offline neural TTS).
+# Regenerate the explainer narration offline with Piper (neural TTS).
+# The committed clips were made with ElevenLabs (see docs/promo/voice/timing.json); this is the no-account fallback.
 #   pip install piper-tts; voices from https://huggingface.co/rhasspy/piper-voices (en/en_GB/<name>/medium)
 #   scripts/make-voice.sh path/to/en_GB-alan-medium.onnx
 set -euo pipefail

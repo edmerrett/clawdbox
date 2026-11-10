@@ -1,5 +1,5 @@
 {
-  "voice": "Piper en_GB-alan-medium",
+  "voice": "ElevenLabs eleven_v4, Peter - British Narrator & Explainer",
   "segments": [
     { "file": "seg0.m4a", "at": 0.4 },
     { "file": "seg1.m4a", "at": 4.8 },

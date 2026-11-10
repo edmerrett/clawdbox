@@ -31,7 +31,8 @@ curl -X POST -H 'Content-Type: application/json' \
 3. Map events to it in `src/daemon/reducer.ts`; add a test in `test/reducer.test.ts`.
 4. `npm run sprites` to regenerate `art/anims/`, then `scripts/render-gifs.py` for the README sprite GIFs and
    `node scripts/render-promo.mjs --voice docs/promo/voice` for the explainer video (needs Playwright and ffmpeg; edit
-   `docs/promo/explainer.html`; narration text in `docs/promo/voice/script.txt`, regenerated with `scripts/make-voice.sh`).
+   `docs/promo/explainer.html`; narration text in `docs/promo/voice/script.txt`; the committed clips are ElevenLabs, see `docs/promo/voice/timing.json`;
+   `scripts/make-voice.sh` makes an offline Piper version if you change the script).
 
 ## Art rules for LEDs
 Black background, saturated colours, nothing finer than 2 px, no frame shorter than 150 ms, same feet row in every
