@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build Clawdbox.app and copy it to ~/Applications.
 #   --login-item   also launch it now and register it as a login item (only when the launchd agent is not used)
+#   --wait         keep polling the daemon for up to 15 s before reporting what the menu bar shows
 set -euo pipefail
 cd "$(dirname "$0")"
 ./build.sh build
@@ -26,11 +27,12 @@ if [ "${1:-}" = "--login-item" ]; then
 fi
 echo "installed $DEST"
 echo
+WAIT=1; for a in "$@"; do [ "$a" = "--wait" ] && WAIT=15; done
 echo "What the menu bar is showing right now (from the running daemon):"
-for i in $(seq 1 15); do
+for i in $(seq 1 "$WAIT"); do
   if "$DEST/Contents/MacOS/Clawdbox" --check 2>/dev/null; then break; fi
-  if [ "$i" = 15 ]; then
-    echo "(no daemon answered on 127.0.0.1:7676 within 15 s; check ~/Library/Logs/clawdbox/clawdbox.log — the menu bar updates by itself once it is up)"
+  if [ "$i" = "$WAIT" ]; then
+    echo "(no daemon answered on 127.0.0.1:7676; the menu bar updates by itself once it is up)"
   else
     sleep 1
   fi
