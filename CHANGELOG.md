@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.1
+
+### Changed
+- One app: Clawdbox.app is the menu bar item and hosts the daemon as a supervised child, replacing the wrapper
+  bundle plus Clawdbar.app pair. Quit stops the daemon until next login; Restart Daemon restarts the child.
+- App icon rendered from the sprite; installers re-register the bundle so Finder and Spotlight pick it up.
+- Installer builds the app before the login agent and no longer prints a stream of "offline" checks.
+
+## 0.2.0
 
 ### Security
 - Hook events now arrive over a `0600` Unix domain socket instead of a loopback TCP port, so no other local
@@ -13,11 +21,6 @@
 - Hook installer keeps the settings file's mode, protects and later removes its backup, refuses concurrent edits.
 - Installer: `main()` wrapper, no silent `npm install` fallback, only adopts a cwd that is the official checkout,
   kills by exact path. Actions pinned by SHA; releases ship `SHA256SUMS`.
-
-### Added
-- One app: Clawdbox.app is the menu bar item and hosts the daemon as a supervised child (replacing the
-  Clawdbox.app wrapper plus Clawdbar.app pair); Quit stops the daemon until next login.
-- App icon (assets/Clawd.icns, rendered from the sprite).
 
 ### Fixed
 - Bridge restart backoff was bypassed; `fatal` bridge errors no longer look like a closed display.
