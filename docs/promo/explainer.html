@@ -1,0 +1,196 @@
+<!doctype html>
+<!--
+  clawdbox explainer: a deterministic canvas animation. Everything is drawn from a time
+  value, so scripts/render-promo.mjs can step through it frame by frame and encode a video.
+  Open it in a browser to preview (it plays in real time); window.renderAt(seconds) draws one frame.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>clawdbox explainer</title>
+<style>html,body{margin:0;background:#0b0b0d}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1080"></canvas>
+<script>
+const SPRITES = window.__SPRITES__ || /*SPRITES*/{}/*END*/;
+const W = 1080, H = 1080;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const ORANGE = '#d96f4f', INK = '#f3efe9', MUTED = '#9a948c', BG = '#0b0b0d', CARD = '#15151a', LINE = '#2a2a31', CYAN = '#20d0f0', GREEN = '#3ce06e', YELLOW = '#ffcc10';
+const SANS = '600 1px -apple-system, "Helvetica Neue", "Segoe UI", "DejaVu Sans", Arial, sans-serif';
+const MONO = '1px ui-monospace, Menlo, "SF Mono", "DejaVu Sans Mono", Consolas, monospace';
+const font = (px, mono = false, weight = 600) => (mono ? `${weight} ${px}px ui-monospace, Menlo, "SF Mono", "DejaVu Sans Mono", Consolas, monospace` : `${weight} ${px}px -apple-system, "Helvetica Neue", "Segoe UI", "DejaVu Sans", Arial, sans-serif`);
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeIO = (x) => (x = clamp(x), x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const span = (t, a, b) => clamp((t - a) / (b - a));
+
+/* ---------- sprites ---------- */
+function frameAt(name, tMs) {
+  const a = SPRITES[name]; if (!a) return null;
+  const total = a.frames.reduce((n, f) => n + f.ms, 0);
+  let tt = ((tMs % total) + total) % total;
+  for (const f of a.frames) { if (tt < f.ms) return f; tt -= f.ms; }
+  return a.frames[a.frames.length - 1];
+}
+/** Crisp pixel-art sprite. */
+function drawSprite(name, tMs, x, y, cell, alpha = 1) {
+  const f = frameAt(name, tMs); if (!f) return;
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (let i = 0; i < 256; i++) {
+    const col = f.palette[f.idx[i]]; if (col === '#000000') continue;
+    ctx.fillStyle = col; ctx.fillRect(x + (i % 16) * cell, y + Math.floor(i / 16) * cell, cell + 0.5, cell + 0.5);
+  }
+  ctx.restore();
+}
+/** The same frame as an LED matrix with glow, inside a bezel. */
+function drawPanel(name, tMs, x, y, size, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  rounded(x - 26, y - 26, size + 52, size + 52, 22, '#1d1d22'); // bezel
+  rounded(x - 8, y - 8, size + 16, size + 16, 10, '#050506'); // glass
+  const cell = size / 16, f = frameAt(name, tMs);
+  for (let i = 0; i < 256; i++) {
+    const cx = x + (i % 16) * cell + cell / 2, cy = y + Math.floor(i / 16) * cell + cell / 2;
+    const col = f ? f.palette[f.idx[i]] : '#000000';
+    if (col === '#000000') { ctx.fillStyle = '#121214'; ctx.beginPath(); ctx.arc(cx, cy, cell * 0.22, 0, 7); ctx.fill(); continue; }
+    ctx.shadowColor = col; ctx.shadowBlur = cell * 0.9; ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(cx, cy, cell * 0.36, 0, 7); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  // a small "DIVOOM"-style label
+  ctx.fillStyle = '#3a3a42'; ctx.font = font(13, false, 700); ctx.textAlign = 'center'; ctx.fillText('16 × 16', x + size / 2, y + size + 20);
+  ctx.restore();
+}
+function rounded(x, y, w, h, r, fill, stroke) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
+}
+function text(s, x, y, px, color = INK, align = 'left', mono = false, weight = 600, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.font = font(px, mono, weight); ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillText(s, x, y); ctx.restore();
+}
+
+/* ---------- scenes ---------- */
+const T_TITLE = [0, 3.6], T_FLOW = [3.6, 16.4], T_GALLERY = [16.4, 21.0], T_END = [21.0, 25.0];
+const TOTAL = T_END[1];
+
+function sceneTitle(t) {
+  const a = ease(span(t, 0, 0.6)) * (1 - ease(span(t, 3.1, 3.6)));
+  const rise = (1 - ease(span(t, 0, 0.9))) * 30;
+  drawSprite('idle', t * 1000, 540 - 8 * 22, 300 - rise, 22, a);
+  text('clawdbox', 540, 720 - rise, 112, INK, 'center', true, 700, a);
+  text('A desk companion for Claude Code.', 540, 790 - rise, 38, MUTED, 'center', false, 500, a);
+  text('Clawd lives on a 16×16 LED panel and acts out what Claude is doing.', 540, 845 - rise, 26, MUTED, 'center', false, 400, a);
+}
+
+const EVENTS = [
+  { at: 4.6, line: 'Read  src/app.ts', state: 'reading', label: 'reading' },
+  { at: 7.0, line: 'Edit  src/app.ts', state: 'writing', label: 'writing' },
+  { at: 9.4, line: 'Bash  npm test', state: 'running', label: 'running' },
+  { at: 11.8, line: 'Allow git push?', state: 'needs-you', label: 'needs you' },
+  { at: 14.2, line: 'Done ✓', state: 'done', label: 'done' },
+];
+function sceneFlow(t) {
+  const a = ease(span(t, T_FLOW[0], T_FLOW[0] + 0.5)) * (1 - ease(span(t, T_FLOW[1] - 0.5, T_FLOW[1])));
+  ctx.save(); ctx.globalAlpha = a;
+  text('How it works', 540, 120, 54, INK, 'center', false, 700);
+  // nodes
+  const termX = 60, termY = 230, termW = 380, termH = 400;
+  const daemonX = 540, daemonY = 430, daemonR = 56;
+  const panelX = 700, panelY = 280, panelSize = 300;
+  // terminal card
+  rounded(termX, termY, termW, termH, 18, CARD, LINE);
+  ctx.fillStyle = '#ff5f57'; ctx.beginPath(); ctx.arc(termX + 24, termY + 24, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = '#febc2e'; ctx.beginPath(); ctx.arc(termX + 46, termY + 24, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = '#28c840'; ctx.beginPath(); ctx.arc(termX + 68, termY + 24, 7, 0, 7); ctx.fill();
+  text('Claude Code', termX + termW / 2, termY + 30, 18, MUTED, 'center', true, 500);
+  text('$ claude', termX + 28, termY + 78, 22, MUTED, 'left', true, 500);
+  text('> fix the failing test', termX + 28, termY + 112, 22, INK, 'left', true, 500);
+  // event lines
+  let current = 'idle', currentSince = -1;
+  EVENTS.forEach((e, i) => {
+    const show = span(t, e.at, e.at + 0.25);
+    if (show <= 0) return;
+    const y = termY + 160 + i * 34;
+    const col = e.state === 'needs-you' ? YELLOW : e.state === 'done' ? GREEN : INK;
+    text((e.state === 'needs-you' ? '? ' : e.state === 'done' ? '  ' : '⏺ ') + e.line, termX + 28, y, 21, col, 'left', true, 500, show);
+    if (t >= e.at) { current = e.state; currentSince = e.at; }
+  });
+  // arrow terminal -> daemon (horizontal, at the daemon's height)
+  ctx.strokeStyle = LINE; ctx.lineWidth = 4; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(termX + termW + 10, daemonY); ctx.lineTo(daemonX - daemonR - 10, daemonY); ctx.stroke();
+  // daemon node
+  ctx.beginPath(); ctx.arc(daemonX, daemonY, daemonR, 0, 7); ctx.fillStyle = CARD; ctx.fill(); ctx.strokeStyle = LINE; ctx.stroke();
+  drawSprite('thinking', t * 1000, daemonX - 8 * 4, daemonY - 8 * 4 - 2, 4);
+  text('daemon', daemonX, daemonY + daemonR + 30, 18, MUTED, 'center', true, 500);
+  // bluetooth waves daemon -> panel
+  const bx = daemonX + daemonR + 10;
+  for (let k = 0; k < 3; k++) {
+    const ph = ((t * 1.2 + k * 0.33) % 1);
+    ctx.strokeStyle = `rgba(32,208,240,${0.9 - ph * 0.8})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(bx, daemonY, 14 + ph * 70, -0.5, 0.5); ctx.stroke();
+  }
+  text('BLE', daemonX + daemonR + 34, daemonY + 120, 16, '#20d0f0', 'center', true, 500);
+  // panel
+  const panelAnim = current === 'done' && t - currentSince > 3.5 ? 'idle' : current;
+  drawPanel(panelAnim, (t - Math.max(currentSince, 0)) * 1000, panelX, panelY, panelSize);
+  text('Divoom TimeBox Evo', panelX + panelSize / 2, panelY + panelSize + 70, 18, MUTED, 'center', true, 500);
+  // hook pulse travelling along the arrow for each event
+  EVENTS.forEach((e) => {
+    const p = span(t, e.at - 0.55, e.at);
+    if (p <= 0 || p >= 1) return;
+    const x0 = termX + termW + 10, x1 = daemonX - daemonR - 10, y0 = daemonY, y1 = daemonY;
+    const px = x0 + (x1 - x0) * easeIO(p), py = y0 + (y1 - y0) * easeIO(p);
+    ctx.shadowColor = ORANGE; ctx.shadowBlur = 18; ctx.fillStyle = ORANGE; ctx.beginPath(); ctx.arc(px, py, 9, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    text('hook', px, py - 18, 14, ORANGE, 'center', true, 600);
+  });
+  // state label under the panel
+  const lbl = EVENTS.filter((e) => t >= e.at).at(-1);
+  if (lbl) {
+    const pop = ease(span(t, lbl.at, lbl.at + 0.35));
+    ctx.save(); ctx.globalAlpha = pop;
+    rounded(panelX + panelSize / 2 - 90, panelY - 70 - (1 - pop) * 10, 180, 44, 22, lbl.state === 'needs-you' ? YELLOW : lbl.state === 'done' ? GREEN : ORANGE);
+    text(lbl.label, panelX + panelSize / 2, panelY - 40 - (1 - pop) * 10, 22, '#111', 'center', true, 700);
+    ctx.restore();
+  }
+  // footer caption
+  text('hooks → private socket → daemon → Bluetooth LE → LEDs', 540, 790, 22, MUTED, 'center', true, 500);
+  const bullets = ['Switches about two seconds behind Claude, no flicker', 'Waves hello, celebrates long turns, cries on errors', 'Makes a coffee after ten idle minutes'];
+  bullets.forEach((b, i) => { const s = ease(span(t, 5 + i * 1.6, 5.6 + i * 1.6)); text('•  ' + b, 200, 860 + i * 46, 27, INK, 'left', false, 500, s); });
+  ctx.restore();
+}
+
+const GALLERY = ['idle', 'thinking', 'reading', 'writing', 'running', 'needs-you', 'coffee', 'vibing', 'wave', 'done', 'error', 'heart'];
+function sceneGallery(t) {
+  const a = ease(span(t, T_GALLERY[0], T_GALLERY[0] + 0.4)) * (1 - ease(span(t, T_GALLERY[1] - 0.4, T_GALLERY[1])));
+  ctx.save(); ctx.globalAlpha = a;
+  text('Thirteen states, posed after the Claude Code stickers', 540, 120, 40, INK, 'center', false, 700);
+  const cols = 4, cell = 12, tile = 16 * cell, gapX = 40, gapY = 70;
+  const gridW = cols * tile + (cols - 1) * gapX, x0 = (W - gridW) / 2, y0 = 190;
+  GALLERY.forEach((name, i) => {
+    const d = ease(span(t, T_GALLERY[0] + 0.2 + i * 0.12, T_GALLERY[0] + 0.6 + i * 0.12));
+    const gx = x0 + (i % cols) * (tile + gapX), gy = y0 + Math.floor(i / cols) * (tile + gapY) + (1 - d) * 20;
+    ctx.save(); ctx.globalAlpha = d; rounded(gx - 10, gy - 10, tile + 20, tile + 20, 14, CARD);
+    drawSprite(name, t * 1000, gx, gy, cell); text(name, gx + tile / 2, gy + tile + 40, 20, MUTED, 'center', true, 500); ctx.restore();
+  });
+  text('…plus ultrathink, a rainbow Clawd for the big questions.', 540, 1000, 24, MUTED, 'center', false, 400);
+  ctx.restore();
+}
+
+function sceneEnd(t) {
+  const a = ease(span(t, T_END[0], T_END[0] + 0.5));
+  ctx.save(); ctx.globalAlpha = a;
+  drawSprite('wave', t * 1000, 540 - 8 * 18, 230, 18);
+  text('Open source. One command to install.', 540, 600, 44, INK, 'center', false, 700);
+  rounded(60, 646, 960, 76, 14, CARD, LINE);
+  text('curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh | bash', 540, 693, 18.5, INK, 'center', true, 500);
+  text('github.com/edmerrett/clawdbox', 540, 790, 34, ORANGE, 'center', true, 700);
+  text('Works with the Divoom TimeBox Evo · macOS · MIT', 540, 850, 22, MUTED, 'center', false, 400);
+  ctx.restore();
+}
+
+function renderAt(t) {
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  if (t < T_TITLE[1]) sceneTitle(t);
+  if (t >= T_FLOW[0] - 0.01 && t < T_FLOW[1]) sceneFlow(t);
+  if (t >= T_GALLERY[0] - 0.01 && t < T_GALLERY[1]) sceneGallery(t);
+  if (t >= T_END[0] - 0.01) sceneEnd(Math.min(t, TOTAL));
+}
+window.renderAt = renderAt; window.TOTAL = TOTAL;
+const HEADLESS = /*HEADLESS*/false/*END*/;
+if (!HEADLESS) { const t0 = performance.now(); (function loop() { renderAt(((performance.now() - t0) / 1000) % TOTAL); requestAnimationFrame(loop); })(); }
+</script></body></html>

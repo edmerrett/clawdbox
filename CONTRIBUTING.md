@@ -29,7 +29,8 @@ curl -X POST -H 'Content-Type: application/json' \
 1. Add the name to `STATES` (and `ACTIVITY_STATES` or `FLASH_STATES`) in `src/anim/types.ts`.
 2. Draw it in `src/anim/clawd.ts` and add it to `clawdSprites()`.
 3. Map events to it in `src/daemon/reducer.ts`; add a test in `test/reducer.test.ts`.
-4. `npm run sprites` to regenerate `art/anims/`, and regenerate the README GIFs if you like (`scripts/render-gifs.py`).
+4. `npm run sprites` to regenerate `art/anims/`, then `scripts/render-gifs.py` for the README sprite GIFs and
+   `node scripts/render-promo.mjs` for the explainer video (needs Playwright and ffmpeg; edit `docs/promo/explainer.html`).
 
 ## Art rules for LEDs
 Black background, saturated colours, nothing finer than 2 px, no frame shorter than 150 ms, same feet row in every
