@@ -8,7 +8,6 @@ const loopMs = Object.fromEntries(STATES.map((s) => [s, 800])) as Record<State, 
 Object.assign(loopMs, { thinking: 600, reading: 600, writing: 400, running: 400, 'needs-you': 500 });
 const base = {
   minHoldMs: 2000,
-  idleAfterMs: 90_000,
   maxBoundaryWaitMs: 1500,
   loopMs,
   flashMs: 3500,
@@ -54,12 +53,15 @@ test('needs-you bypasses the hold', () => {
   assert.equal(s.tick(60), 'needs-you');
 });
 
-test('falls back to idle when events stop (Esc interrupt)', () => {
+test("a busy target is kept until the daemon changes it; staleness is the reducer's call", () => {
   const s = mk();
   s.shown('running', 0);
   s.setTarget('running', 0);
   assert.equal(s.tick(50_000), null);
-  assert.equal(s.tick(90_001 + 2000), 'idle');
+  assert.equal(s.tick(3_600_000), null);
+  // the reducer expired the session and the daemon passes the new aggregate in
+  s.setTarget('idle', 3_600_000);
+  assert.equal(s.tick(3_600_000), 'idle');
 });
 
 test('target changes while waiting are honoured', () => {

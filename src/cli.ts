@@ -47,7 +47,8 @@ Usage:
   clawdbox daemon (--ble [--address UUID] [--upload | --slots [--select HEX]] [--python PATH]
                    | --mac XX:XX:XX:XX:XX:XX [--channel N] | --serial /dev/cu.NAME | --mock)
                   [--anims DIR] [--port ${PORT}] [--brightness 0-100 (default ${DEFAULT_CONFIG.brightness})]
-                  [--hold-ms ${DEFAULT_CONFIG.minHoldMs}] [--idle-ms ${DEFAULT_CONFIG.idleAfterMs}] [--coffee-min 10 (0 disables)] [--flash-ms ${DEFAULT_CONFIG.flashMs}]
+                  [--hold-ms ${DEFAULT_CONFIG.minHoldMs}] [--idle-ms ${DEFAULT_CONFIG.idleAfterMs}] [--wait-ms ${DEFAULT_CONFIG.waitAfterMs}]
+                  [--coffee-min 10 (0 disables)] [--flash-ms ${DEFAULT_CONFIG.flashMs}]
                   [--socket PATH] [--tcp-events] [--no-update-check] [-v]
       --ble          newer TimeBox-Evo-audio / Backpack M over BLE (bridge/clawdbox_ble.py + divoom-protocol).
                      Streams stills by default; --upload sends the loop per change (shows a transfer screen);
@@ -89,6 +90,7 @@ const OPTIONS = {
   brightness: { type: 'string' },
   'hold-ms': { type: 'string' },
   'idle-ms': { type: 'string' },
+  'wait-ms': { type: 'string' },
   'coffee-min': { type: 'string' },
   'flash-ms': { type: 'string' },
   socket: { type: 'string' },
@@ -155,6 +157,7 @@ function configFromFlags(v: Flags): DaemonConfig {
     brightness: numFlag('brightness', v.brightness, DEFAULT_CONFIG.brightness, 0, 100),
     minHoldMs: numFlag('hold-ms', v['hold-ms'], DEFAULT_CONFIG.minHoldMs, 0, 60_000),
     idleAfterMs: numFlag('idle-ms', v['idle-ms'], DEFAULT_CONFIG.idleAfterMs, 1000, 86_400_000),
+    waitAfterMs: numFlag('wait-ms', v['wait-ms'], DEFAULT_CONFIG.waitAfterMs, 1000, 86_400_000),
     idleStageAfterMs: coffeeMin * 60_000,
     idleStageCycleMs: Math.max(60_000, coffeeMin * 60_000),
     flashMs: numFlag('flash-ms', v['flash-ms'], DEFAULT_CONFIG.flashMs, 500, 60_000),
@@ -186,6 +189,7 @@ function daemonArgsFromFlags(v: Flags, cfg: DaemonConfig): string[] {
     ['port', '--port', cfg.port],
     ['hold-ms', '--hold-ms', cfg.minHoldMs],
     ['idle-ms', '--idle-ms', cfg.idleAfterMs],
+    ['wait-ms', '--wait-ms', cfg.waitAfterMs],
     ['coffee-min', '--coffee-min', cfg.idleStageAfterMs / 60_000],
     ['flash-ms', '--flash-ms', cfg.flashMs],
     ['socket', '--socket', cfg.socketPath],
