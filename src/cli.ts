@@ -283,14 +283,23 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   if (!existsSync(cli)) throw new UsageError('run "npm run build" first so dist/cli.js exists');
   const args = daemonArgsFromFlags(v, cfg);
 
-  // 1. app bundle so macOS grants Bluetooth to the daemon
+  // 1. Something with Bluetooth permission must own the daemon. Preferred: Clawdbox.app (the
+  //    menu bar app) hosts it as a child. Fallback when the app was not built: a wrapper bundle.
   const appDir = appBundlePath();
-  writeAppBundle(
-    appDir,
-    appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot(), version: packageVersion() }),
-    join(repoRoot(), 'assets', 'Clawd.icns'),
-  );
-  const launcher = join(appDir, 'Contents', 'MacOS', 'clawdbox');
+  let launcher: string;
+  if (isHostingApp(appDir)) {
+    writeDaemonConfig({ node: process.execPath, cli, args, cwd: repoRoot() });
+    launcher = hostingAppBinary();
+    console.log(`daemon host:   ${appDir} (menu bar app; config in ${daemonConfigPath()})`);
+  } else {
+    writeAppBundle(
+      appDir,
+      appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot(), version: packageVersion() }),
+      join(repoRoot(), 'assets', 'Clawd.icns'),
+    );
+    launcher = join(appDir, 'Contents', 'MacOS', 'clawdbox');
+    console.log(`daemon host:   ${appDir} (wrapper bundle; build the menu bar app with menubar/install.sh and re-run to merge them)`);
+  }
 
   // 2. launchd agent that keeps it running
   const path = launchdPlistPath();
