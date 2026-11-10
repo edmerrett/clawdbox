@@ -78,6 +78,10 @@ fi
 step "checkout at $DIR"
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" fetch --quiet --tags origin main
+  # a detached checkout (the updater pins release tags) goes back onto main for a fresh install
+  if ! git -C "$DIR" symbolic-ref -q HEAD >/dev/null && [ -z "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; then
+    git -C "$DIR" checkout --quiet main
+  fi
   if [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; then
     echo "local changes present; NOT updating the checkout (this also blocks 'clawdbox update'):"
     git -C "$DIR" status --porcelain --untracked-files=no | sed 's/^/    /'

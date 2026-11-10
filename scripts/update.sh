@@ -41,12 +41,19 @@ else
 fi
 TARGET=$(git rev-parse "$TARGET_REF^{commit}")
 
+# Never move backwards or sideways: if the installed commit already contains the target
+# (a checkout of main is usually ahead of the newest tag), there is nothing to do.
+if git merge-base --is-ancestor "$TARGET" "$BUILT" 2>/dev/null; then CURRENT=1; else CURRENT=0; fi
 if [ "$CHECK" = 1 ]; then
-  if [ "$BUILT" = "$TARGET" ]; then echo "up to date ($TARGET_REF, $(short "$TARGET"))"; exit 1; fi
+  if [ "$CURRENT" = 1 ]; then echo "up to date ($(short "$BUILT") already includes $TARGET_REF)"; exit 1; fi
   echo "update available: $(short "$BUILT") -> $TARGET_REF ($(short "$TARGET"))"; exit 0
 fi
-if [ "$BUILT" = "$TARGET" ] && [ "$FORCE" = 0 ]; then
-  say "already up to date ($TARGET_REF, $(short "$TARGET"))"; exit 0
+if [ "$CURRENT" = 1 ] && [ "$FORCE" = 0 ]; then
+  say "already up to date ($(short "$BUILT") already includes $TARGET_REF)"; exit 0
+fi
+if [ "$CURRENT" = 1 ] && [ "$FORCE" = 1 ]; then
+  # --force rebuilds what is checked out; it does not downgrade to the tag
+  TARGET=$(git rev-parse HEAD); TARGET_REF="HEAD"
 fi
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   say "local changes present; refusing to update:"; git status --porcelain --untracked-files=no | sed 's/^/    /'; exit 4

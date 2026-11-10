@@ -259,7 +259,7 @@ export function updaterPlist(opts: { script: string; logDir: string; cwd: string
     <key>StartInterval</key>
     <integer>${opts.intervalSec}</integer>
     <key>RunAtLoad</key>
-    <true/>
+    <false/>
     <key>StandardOutPath</key>
     <string>${esc(join(opts.logDir, 'update.log'))}</string>
     <key>StandardErrorPath</key>
