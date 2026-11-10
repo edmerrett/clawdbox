@@ -39,8 +39,9 @@ node dist/cli.js install-launchd --ble         # login agent + six-hourly releas
 One app does three jobs: it sits in the menu bar (Clawd silhouette plus the current state, dimmed when the panel is
 disconnected), it hosts the node daemon as a child process so the daemon inherits its Bluetooth permission, and it
 restarts the daemon if it dies. Click it and the menu opens on a small digital Divoom playing whatever the panel is
-showing, live. Below that the menu offers Open Previewer, Force State, Restart Daemon, Show Logs and, when a
-newer release exists, Install Update. Quit stops the daemon too, until the next login.
+showing, live. Below that the menu offers Check for Updates, Open Previewer, Force State, Restart Daemon, Show Logs
+and, when a newer release exists, Install Update. A state picked under Force State is held (ticked) whatever the hooks
+say, until you pick Release or the same state again. Quit stops the daemon too, until the next login.
 `~/Applications/Clawdbox.app/Contents/MacOS/Clawdbox --check` prints what the menu bar would show. Without the Xcode
 command line tools the installer falls back to a plain wrapper bundle with no menu bar item.
 
@@ -69,7 +70,8 @@ command line tools the installer falls back to a plain wrapper bundle with no me
 ```
 
 Hook events: `POST /event` on the Unix socket (JSON object → 204). TCP, loopback only: `GET /state`, `GET /anims`,
-`POST /show/<state>` (force, for testing), `GET /` previewer. Every request needs a loopback `Host`; POSTs with a
+`POST /show/<state>` (force until the next hook event; `?hold=1` until released), `POST /release`,
+`POST /update-check` (check for a release now), `GET /` previewer. Every request needs a loopback `Host`; POSTs with a
 foreign `Origin` are refused.
 
 ## Hooks

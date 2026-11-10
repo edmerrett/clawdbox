@@ -1,7 +1,7 @@
 // Clawdbox.app: the one macOS app for clawdbox.
 //
 // It is a menu bar item that shows whether the panel is connected and which state Clawd
-// is in, with shortcuts (previewer, force a state, restart, logs, install update). Its
+// is in, with shortcuts (previewer, force/hold a state, restart, logs, check for and install updates). Its
 // menu opens on a small digital Divoom that plays the animation the panel is showing. It is
 // also the daemon's host: when install-launchd has written a daemon config, the app
 // spawns the node daemon as a child and supervises it. The child inherits this app's
@@ -28,10 +28,13 @@ struct DaemonState: Decodable {
         let commit: String?
         let latestCommit: String?
         let updateAvailable: Bool
+        let error: String?
     }
     let current: String
     let pending: String
     let forced: String?
+    /// The forced state stays until released (older daemons do not send this).
+    let held: Bool?
     let transport: String?
     let sessions: [String: Session]
     let device: Device
@@ -98,7 +101,7 @@ struct Rendering {
             : "Panel disconnected" + (s.device.lastError.map { ": \($0)" } ?? "")
         var line = "Showing: \(s.current)"
         if s.pending != s.current { line += "  →  \(s.pending)" }
-        if let f = s.forced { line += "  (forced \(f))" }
+        if let f = s.forced { line += s.held == true ? "  (holding \(f))" : "  (forced \(f))" }
         showing = line
         transport = "Transport: \(s.transport ?? s.device.label)"
         let n = s.sessions.count
@@ -443,6 +446,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let sessionsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let installUpdateItem = NSMenuItem(title: "Install Update…", action: #selector(installUpdate), keyEquivalent: "u")
+    private let checkUpdatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+    private let forceMenu = NSMenu()
+    private let releaseItem = NSMenuItem(title: "Release (follow hooks)", action: #selector(releaseForce), keyEquivalent: "")
+    /// The outcome of a manual "Check for Updates…", shown until the menu has been seen with it.
+    private var updateNote: String?
+    private var updateNoteSeen = false
+    private var checkingUpdates = false
     private var supervisor: DaemonSupervisor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -482,21 +492,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installUpdateItem.target = self
         installUpdateItem.isHidden = true
         menu.addItem(installUpdateItem)
+        checkUpdatesItem.target = self
+        menu.addItem(checkUpdatesItem)
         menu.addItem(.separator())
 
         let open = NSMenuItem(title: "Open Previewer", action: #selector(openPreviewer), keyEquivalent: "o")
         open.target = self
         menu.addItem(open)
 
+        // A state picked here is held until released (or picked again), whatever the hooks say.
         let force = NSMenuItem(title: "Force State", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
+        releaseItem.target = self
+        forceMenu.addItem(releaseItem)
+        forceMenu.addItem(.separator())
         for s in allStates {
             let it = NSMenuItem(title: s, action: #selector(forceState(_:)), keyEquivalent: "")
             it.target = self
             it.representedObject = s
-            sub.addItem(it)
+            forceMenu.addItem(it)
         }
-        force.submenu = sub
+        force.submenu = forceMenu
         menu.addItem(force)
 
         let restart = NSMenuItem(title: "Restart Daemon", action: #selector(restartDaemon), keyEquivalent: "r")
@@ -535,6 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         logPanel("menu opened")
+        if updateNote != nil && !checkingUpdates { updateNoteSeen = true }
         panel.play()
         refresh()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.refresh() }
@@ -546,6 +562,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openTimer?.invalidate()
         openTimer = nil
         panel.pause()
+        if updateNoteSeen {
+            updateNote = nil
+            updateNoteSeen = false
+        }
     }
 
     /// Load the sprites once, and again after the daemon restarts (they may have been rebuilt).
@@ -595,9 +615,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showingItem.title = r.showing
         transportItem.title = r.transport
         sessionsItem.title = r.sessions
-        updateItem.title = r.update ?? ""
-        updateItem.isHidden = r.update == nil
+        let updateLine = r.update ?? updateNote
+        updateItem.title = updateLine ?? ""
+        updateItem.isHidden = updateLine == nil
         installUpdateItem.isHidden = r.update == nil || installedCheckout() == nil
+
+        // Force State: tick the held state; Release only when something is forced.
+        let forced = reachable ? lastState?.forced : nil
+        let held = reachable && lastState?.held == true
+        for item in forceMenu.items {
+            guard let s = item.representedObject as? String else { continue }
+            item.state = held && s == forced ? .on : .off
+        }
+        releaseItem.title = forced.map { "Release \($0) (follow hooks)" } ?? "Release (follow hooks)"
+        releaseItem.isHidden = forced == nil
+        forceMenu.items.first(where: { $0.isSeparatorItem })?.isHidden = forced == nil
     }
 
     // MARK: actions
@@ -606,13 +638,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(daemonBase)
     }
 
+    /// Hold the picked state on the panel until released; picking the held state again releases it.
     @objc private func forceState(_ sender: NSMenuItem) {
         guard let state = sender.representedObject as? String else { return }
-        var request = URLRequest(url: daemonBase.appendingPathComponent("show/\(state)"))
+        if sender.state == .on {
+            releaseForce()
+            return
+        }
+        var url = URLComponents(url: daemonBase.appendingPathComponent("show/\(state)"), resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "hold", value: "1")]
+        post(url.url!)
+    }
+
+    /// Let the hooks drive the panel again.
+    @objc private func releaseForce() {
+        post(daemonBase.appendingPathComponent("release"))
+    }
+
+    private func post(_ url: URL) {
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 2
         URLSession.shared.dataTask(with: request) { [weak self] _, _, _ in
             DispatchQueue.main.async { self?.refresh() }
+        }.resume()
+    }
+
+    /// Ask the daemon to look for a newer release now instead of at its next 6-hourly check.
+    @objc private func checkForUpdates() {
+        guard !checkingUpdates else { return }
+        checkingUpdates = true
+        updateNote = "Checking for updates…"
+        updateNoteSeen = false
+        render()
+        var request = URLRequest(url: daemonBase.appendingPathComponent("update-check"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 120  // ls-remote plus a shallow fetch
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            let info = error == nil ? data.flatMap { try? JSONDecoder().decode(DaemonState.Update.self, from: $0) } : nil
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.checkingUpdates = false
+                if let info = info {
+                    if info.updateAvailable {
+                        self.updateNote = nil  // the regular "Update available" line takes over
+                    } else if let err = info.error {
+                        self.updateNote = "Update check failed: \(err)"
+                    } else {
+                        self.updateNote = "Clawdbox is up to date (\(info.version))"
+                    }
+                } else {
+                    self.updateNote = "Update check failed: " + (error?.localizedDescription ?? "daemon not running")
+                }
+                self.refresh()
+            }
         }.resume()
     }
 

@@ -151,28 +151,47 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
 
   let forced: State | null = null;
   let forcedAt = 0;
+  /** A held force stays on the panel, hook events or not, until released. */
+  let held = false;
   const aggregate = (now: number) => reducer.aggregate(now, cfg.idleAfterMs);
-  const onEvent = (ev: HookEvent) => {
-    const now = Date.now();
-    const { action, flash } = reducer.apply(ev, now);
-    forced = null;
-    debug(
-      `event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${aggregate(now)}`,
-    );
-    sched.setTarget(aggregate(now), now);
-    if (flash) sched.flash(flash, now);
-  };
-  const onForce = (s: State) => {
-    forced = s;
-    const now = Date.now();
-    forcedAt = now;
+  /** Put `s` on the panel (flashes, activity states and the long-idle stages each go there differently). */
+  const applyForce = (s: State, now: number) => {
     if (isFlashState(s)) sched.flash(s, now);
     else if (isActivityState(s)) sched.setTarget(s, now);
     else if (isIdleStage(s)) {
       // long-idle stage: pretend we've been idle long enough
       sched.setTarget('idle', now - cfg.idleStageAfterMs - cfg.idleStageCycleMs * IDLE_STAGES.indexOf(s));
     }
-    log(`forced ${s}`);
+  };
+  const onEvent = (ev: HookEvent) => {
+    const now = Date.now();
+    const { action, flash } = reducer.apply(ev, now);
+    debug(
+      `event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${aggregate(now)}${held ? ` (held ${forced})` : ''}`,
+    );
+    // the reducer keeps tracking sessions, but a held force keeps the panel
+    if (held) return;
+    forced = null;
+    sched.setTarget(aggregate(now), now);
+    if (flash) sched.flash(flash, now);
+  };
+  const onForce = (s: State, hold = false) => {
+    const now = Date.now();
+    forced = s;
+    forcedAt = now;
+    held = hold;
+    sched.clearFlash();
+    applyForce(s, now);
+    log(`forced ${s}${hold ? ' (held until released)' : ''}`);
+  };
+  const onRelease = () => {
+    if (!forced) return;
+    log(`released ${forced}`);
+    forced = null;
+    held = false;
+    const now = Date.now();
+    sched.clearFlash();
+    sched.setTarget(aggregate(now), now);
   };
 
   const updates = new UpdateChecker(repoRoot(), packageVersion(), log);
@@ -184,11 +203,14 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     {
       onEvent,
       onForce,
+      onRelease,
+      checkUpdates: () => updates.check(),
       anims: () => anims,
       status: () => ({
         current: sched.current,
         pending: sched.pending,
         forced,
+        held: forced !== null && held,
         transport: cfg.mock ? 'mock' : cfg.ble ? `ble ${cfg.bleMode ?? 'stream'}` : cfg.serial ? 'serial' : 'rfcomm',
         sessions: Object.fromEntries(reducer.sessions),
         states: STATES,
@@ -226,9 +248,14 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     // No hook fires when a turn is interrupted, so silence is the only sign of it.
     const expired = reducer.expire(now, cfg.idleAfterMs, cfg.waitAfterMs);
     if (expired.length) log(`no events for a while; treating as idle: ${expired.join(', ')}`);
-    if (forced && sched.current !== forced && sched.pending !== forced) forced = null;
-    // a previewed busy state does not outstay a real one
-    if (forced && forced !== 'idle' && isActivityState(forced) && now - forcedAt > cfg.idleAfterMs) forced = null;
+    if (forced && held) {
+      // keep it up: a flash would end and an idle stage would move on by themselves
+      if (sched.pending !== forced) applyForce(forced, now);
+    } else {
+      if (forced && sched.current !== forced && sched.pending !== forced) forced = null;
+      // a previewed busy state does not outstay a real one
+      if (forced && forced !== 'idle' && isActivityState(forced) && now - forcedAt > cfg.idleAfterMs) forced = null;
+    }
     // Sessions expire, and a quiet `running` one yields to an active one, with time alone; keep the panel in step.
     if (!forced && sched.target !== aggregate(now)) sched.setTarget(aggregate(now), now);
     if (busy) return;

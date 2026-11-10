@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Menu bar: Check for Updates… asks the daemon to look for a newer release now (`POST /update-check`) and says
+  whether you are up to date, instead of waiting for the 6-hourly check.
+- Force State now holds: the picked state stays on the panel (ticked in the menu) through hook events, flashes and
+  idle stages until you pick Release, or the same state again. Previously a force lasted only until the next hook
+  event and there was no way to undo it. The daemon gains `POST /show/<state>?hold=1` and `POST /release`, the CLI
+  `clawdbox show <state> --hold` and `clawdbox release`; `/state` reports `held`. A plain `/show/<state>` (the
+  previewer, `clawdbox show`) still lasts until the next hook event.
+
 ## 0.3.0
 
 ### Added

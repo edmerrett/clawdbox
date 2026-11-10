@@ -65,6 +65,11 @@ export class Scheduler {
     this.flashUntil = now + this.opts.flashMs;
   }
 
+  /** Drop a flash that is still up (a new force or a release replaces it). */
+  clearFlash(): void {
+    this.flashState = null;
+  }
+
   /** What the panel should be showing, before hold/boundary smoothing. */
   desired(now: number): State {
     if (this.flashState && now < this.flashUntil) return this.flashState;
