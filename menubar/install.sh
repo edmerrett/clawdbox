@@ -10,6 +10,10 @@ mkdir -p "$HOME/Applications"
 # app's own "Install Update…" runs this, bash is already a separate process, so this is safe.
 rm -rf "$DEST"
 cp -R build/Clawdbox.app "$DEST"
+# LaunchServices caches the icon by path; the wrapper bundle that used to live here had none.
+LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+[ -x "$LSREG" ] && "$LSREG" -f "$DEST" >/dev/null 2>&1 || true
+touch "$DEST"
 # the old two-app layout
 osascript -e 'tell application "System Events" to delete login item "Clawdbar"' >/dev/null 2>&1 || true
 rm -rf "$HOME/Applications/Clawdbar.app"
