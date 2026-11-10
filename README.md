@@ -71,7 +71,6 @@ Piskel and run `clawdbox build-anims`. [Art guide →](docs/ART.md)
 
 - [Hardware and protocols](docs/HARDWARE.md): the two Evos, BLE modes, prior art, phone interference
 - [Security](SECURITY.md): what listens where, what the auto-updater trusts
-- [Sharing clawdbox](docs/promo/linkedin-post.md): the narrated explainer video, poster and a ready-to-post write-up
 - [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 - The BLE protocol is [divoom-protocol](https://github.com/orionparrott/divoom-protocol)'s work; the Classic protocol follows
   [RomRider](https://github.com/RomRider/node-divoom-timebox-evo) and [hass-divoom](https://github.com/d03n3rfr1tz3/hass-divoom).
