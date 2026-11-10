@@ -22,7 +22,7 @@ curl -X POST -H 'Content-Type: application/json' \
 - `src/anim/` sprite types, loader, and the built-in Clawd poses as ASCII art.
 - `src/tools/` art importer and the hooks / launchd installers.
 - `bridge/` Python BLE bridge for the newer Evo, on top of divoom-protocol.
-- `menubar/` Swift menu bar companion.
+- `menubar/` Clawdbox.app: Swift menu bar app and daemon host.
 - `web/` the previewer page.
 
 ## Adding a state

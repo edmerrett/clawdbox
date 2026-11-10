@@ -15,7 +15,9 @@
   kills by exact path. Actions pinned by SHA; releases ship `SHA256SUMS`.
 
 ### Added
-- App icon for Clawdbox.app and Clawdbar.app (assets/Clawd.icns, rendered from the sprite).
+- One app: Clawdbox.app is the menu bar item and hosts the daemon as a supervised child (replacing the
+  Clawdbox.app wrapper plus Clawdbar.app pair); Quit stops the daemon until next login.
+- App icon (assets/Clawd.icns, rendered from the sprite).
 
 ### Fixed
 - Bridge restart backoff was bypassed; `fatal` bridge errors no longer look like a closed display.

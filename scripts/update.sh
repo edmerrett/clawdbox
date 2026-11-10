@@ -11,7 +11,7 @@
 #   scripts/update.sh --check    exit 0 if an update is available, 1 if current, 2+ on error
 #   scripts/update.sh --main     follow origin/main instead of release tags
 set -euo pipefail
-# Clawdbar launches this from a GUI context whose PATH lacks Homebrew; the launchd agent sets its own.
+# Clawdbox.app launches this from a GUI context whose PATH lacks Homebrew.
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -76,7 +76,7 @@ if [ "$TRACK" = tags ]; then git checkout --quiet "$TARGET"; else git merge --ff
 # Dependencies without running install scripts; the one native optional module is rebuilt
 # only when the install actually uses the original Evo's Bluetooth Classic transport.
 npm ci --no-audit --no-fund --silent --ignore-scripts
-if grep -q -- '--mac\|--serial' "$HOME/Applications/Clawdbox.app/Contents/MacOS/clawdbox" 2>/dev/null; then
+if grep -q -- '--mac\|--serial' "$HOME/Library/Application Support/clawdbox/daemon.json" "$HOME/Applications/Clawdbox.app/Contents/MacOS/clawdbox" 2>/dev/null; then
   npm rebuild bluetooth-serial-port --silent || say "bluetooth-serial-port did not build; the Classic transport may be unavailable"
 fi
 # Build beside the live dist/ and swap in one move.
@@ -90,9 +90,9 @@ if [ -x .venv/bin/pip ] && { [ "$FORCE" = 1 ] || grep -q '^bridge/requirements.t
   say "updating the Python bridge dependency"
   .venv/bin/pip install -q -r bridge/requirements.txt || say "pip install failed; the bridge keeps its current dependency"
 fi
-if [ -d "$HOME/Applications/Clawdbar.app" ] && xcrun -f swiftc >/dev/null 2>&1 && { [ "$FORCE" = 1 ] || grep -q '^menubar/' <<<"$CHANGED"; }; then
-  say "rebuilding the menu bar app"
-  menubar/install.sh || say "menu bar app rebuild failed; the old one keeps running"
+if [ -x "$HOME/Applications/Clawdbox.app/Contents/MacOS/Clawdbox" ] && xcrun -f swiftc >/dev/null 2>&1 && { [ "$FORCE" = 1 ] || grep -q '^menubar/' <<<"$CHANGED"; }; then
+  say "rebuilding Clawdbox.app"
+  menubar/install.sh || say "Clawdbox.app rebuild failed; the old one keeps running"
 fi
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   say "restarting the daemon"

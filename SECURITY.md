@@ -24,9 +24,10 @@ clawdbox runs entirely on your machine.
   whoever can push a `v*` tag to this repository, and nothing on `main` reaches an install until it is tagged.
   The daemon's only network egress is one `git ls-remote` of this repository every six hours (`--no-update-check`
   disables it); the updater, when enabled, fetches from GitHub, npm and PyPI.
-- **Menu bar app.** "Install Update…" runs `scripts/update.sh` from the checkout named in the launchd plist the
-  installer wrote, verified to be under your home folder and to be a clawdbox package. It never executes a path
-  received from the daemon.
+- **Clawdbox.app.** It hosts the daemon from a config file (`~/Library/Application Support/clawdbox/daemon.json`,
+  mode 0600) that must point inside your home folder at clawdbox's own CLI; "Install Update…" runs
+  `scripts/update.sh` from the checkout named in the launchd plist, verified the same way. Nothing it executes
+  comes from the network.
 - **Installer.** `install.sh` is a single function (a truncated download runs nothing), adopts the current
   directory only when it is a checkout of the official repository, never falls back from `npm ci` to `npm install`,
   and kills processes by exact path. Tagged releases publish `SHA256SUMS` covering `install.sh`. `install-launchd` writes

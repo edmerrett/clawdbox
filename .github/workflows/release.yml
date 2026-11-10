@@ -23,11 +23,11 @@ jobs:
       - name: build the menu bar app
         run: |
           menubar/build.sh build
-          ditto -c -k --keepParent menubar/build/Clawdbar.app "Clawdbar-${GITHUB_REF_NAME}.zip"
+          ditto -c -k --keepParent menubar/build/Clawdbox.app "Clawdbox.app-${GITHUB_REF_NAME}.zip"
       - name: pack the npm tarball
         run: npm pack && mv clawdbox-*.tgz "clawdbox-${GITHUB_REF_NAME}.tgz"
       - name: checksums
-        run: shasum -a 256 "Clawdbar-${GITHUB_REF_NAME}.zip" "clawdbox-${GITHUB_REF_NAME}.tgz" install.sh > SHA256SUMS && cat SHA256SUMS
+        run: shasum -a 256 "Clawdbox.app-${GITHUB_REF_NAME}.zip" "clawdbox-${GITHUB_REF_NAME}.tgz" install.sh > SHA256SUMS && cat SHA256SUMS
       - name: publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,4 +37,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "clawdbox $GITHUB_REF_NAME" \
             --notes "${notes:-See CHANGELOG.md.}" \
-            "Clawdbar-${GITHUB_REF_NAME}.zip" "clawdbox-${GITHUB_REF_NAME}.tgz" SHA256SUMS
+            "Clawdbox.app-${GITHUB_REF_NAME}.zip" "clawdbox-${GITHUB_REF_NAME}.tgz" SHA256SUMS

@@ -44,7 +44,8 @@ Claude Code's [hooks](https://code.claude.com/docs/en/hooks) fire on every tool 
 and stop. Each one POSTs a little JSON to the daemon's private Unix socket in the background and never waits for an
 answer.
 The daemon works out what Clawd should be doing, smooths out the flicker of rapid tool calls, and streams the
-right loop to the panel. A browser previewer shows the same thing, and a menu bar app shows whether the panel is
+right loop to the panel. A browser previewer shows the same thing. On macOS one app, `Clawdbox.app`, hosts the
+daemon (so it has Bluetooth permission), supervises it, and sits in the menu bar showing whether the panel is
 connected and which state is up.
 
 ## What you need
@@ -62,8 +63,8 @@ curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh 
 ```
 
 That clones to `~/Tools/clawdbox`, installs the Node and Python dependencies, builds, installs the Claude Code
-hooks, installs the daemon as a login agent with a six-hourly release updater, builds and installs the Clawdbar
-menu bar app, and then waits for Clawd to appear on the panel. Re-running it updates everything. Before you run it:
+hooks, builds Clawdbox.app (the menu bar app, which also hosts the daemon), installs it as a login agent with a
+six-hourly release updater, and then waits for Clawd to appear on the panel. Re-running it updates everything. Before you run it:
 
 1. **Pair** the Timebox in System Settings → Bluetooth.
 2. Turn the **phone's Bluetooth off**: the Divoom app reconnects to the box whenever it sees it, and the box accepts
@@ -84,8 +85,8 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # ne
 node dist/cli.js send writing --ble            # smoke test: Clawd types on the panel (original Evo: --mac XX:…)
 node dist/cli.js daemon --ble -v               # run the daemon; previewer at http://127.0.0.1:7676
 node dist/cli.js install-hooks                 # merge hooks into ~/.claude/settings.json (backs it up first)
+menubar/install.sh                             # build Clawdbox.app (menu bar + daemon host)
 node dist/cli.js install-launchd --ble         # login agent + six-hourly release updater (--no-auto-update to skip)
-menubar/install.sh                             # Clawdbar menu bar app
 ```
 `npm link` puts a `clawdbox` command on your PATH. No panel yet? `npm run dev` runs everything against a mock panel.
 

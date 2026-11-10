@@ -253,4 +253,14 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  if (process.env.CLAWDBOX_SUPERVISED) {
+    // Clawdbox.app spawned us; if it is gone (crash, kill -9), stop rather than hold the panel hostage.
+    const parent = process.ppid;
+    setInterval(() => {
+      if (process.ppid !== parent) {
+        log('supervising app is gone; stopping');
+        shutdown();
+      }
+    }, 2000).unref();
+  }
 }

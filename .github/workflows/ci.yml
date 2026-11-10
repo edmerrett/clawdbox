@@ -65,7 +65,7 @@ jobs:
           set -o pipefail
           node dist/cli.js daemon --mock --port 7676 --hold-ms 0 > daemon.log 2>&1 &
           for i in $(seq 1 50); do curl -sf http://127.0.0.1:7676/health >/dev/null && break; sleep 0.2; done
-          APP=menubar/build/Clawdbar.app/Contents/MacOS/Clawdbar
+          APP=menubar/build/Clawdbox.app/Contents/MacOS/Clawdbox
           echo "--- initial"; "$APP" --check | tee check1.txt
           grep -q '^connected: true' check1.txt
           grep -q '^transport: mock' check1.txt
@@ -76,11 +76,11 @@ jobs:
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           echo "--- launch the real menu bar app and read its status item"
-          open menubar/build/Clawdbar.app || (menubar/build/Clawdbar.app/Contents/MacOS/Clawdbar >/dev/null 2>&1 &)
+          open menubar/build/Clawdbox.app || (menubar/build/Clawdbox.app/Contents/MacOS/Clawdbox >/dev/null 2>&1 &)
           sleep 5
-          pgrep -x Clawdbar >/dev/null && echo "Clawdbar is running as a GUI app"
+          pgrep -x Clawdbox >/dev/null && echo "Clawdbox is running as a GUI app"
           # Read the live NSStatusItem title through the accessibility tree (may need permission on some runners).
-          osascript -e 'tell application "System Events" to tell process "Clawdbar" to get value of attribute "AXTitle" of menu bar item 1 of menu bar 2' > statusitem.txt 2>&1 || true
+          osascript -e 'tell application "System Events" to tell process "Clawdbox" to get value of attribute "AXTitle" of menu bar item 1 of menu bar 2' > statusitem.txt 2>&1 || true
           echo "status item title: $(cat statusitem.txt)"
           mkdir -p shots
           screencapture -x shots/menubar-full.png
@@ -88,7 +88,7 @@ jobs:
           sips -g pixelWidth -g pixelHeight shots/menubar-full.png | tail -2
           W=$(sips -g pixelWidth shots/menubar-full.png | awk '/pixelWidth/{print $2}')
           sips -c 80 900 --cropOffset 0 $((W-900)) shots/menubar-full.png --out shots/menubar-right.png >/dev/null
-          pkill -x Clawdbar || true
+          pkill -x Clawdbox || true
           kill %1; sleep 1
           echo "--- daemon down"
           set +e; "$APP" --check > check3.txt; rc=$?; set -e

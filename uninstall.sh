@@ -7,10 +7,11 @@ echo "▸ stopping and removing the launchd agents"
 launchctl bootout "gui/$UID_/com.clawdbox.daemon" 2>/dev/null || true
 launchctl bootout "gui/$UID_/com.clawdbox.update" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/com.clawdbox.daemon.plist" "$HOME/Library/LaunchAgents/com.clawdbox.update.plist"
-rm -rf "$HOME/Applications/Clawdbox.app"
+rm -f "$HOME/Library/Application Support/clawdbox/daemon.json"
+pkill -x Clawdbox 2>/dev/null || true
 pkill -f "$PWD/dist/cli.js daemon" 2>/dev/null || true
 pkill -f "$PWD/bridge/clawdbox_ble.py" 2>/dev/null || true
-echo "▸ removing the menu bar app"
+echo "▸ removing Clawdbox.app"
 menubar/uninstall.sh 2>/dev/null || true
 echo "▸ removing hooks from ~/.claude/settings.json"
 if [ -f dist/cli.js ]; then

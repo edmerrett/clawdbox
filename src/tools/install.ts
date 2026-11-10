@@ -185,6 +185,26 @@ export function appBundlePath(): string {
   return join(homedir(), 'Applications', `${APP_NAME}.app`);
 }
 
+/** The menu bar app's binary; when present it hosts the daemon and no wrapper bundle is needed. */
+export function hostingAppBinary(): string {
+  return join(appBundlePath(), 'Contents', 'MacOS', APP_NAME);
+}
+
+export function isHostingApp(appDir = appBundlePath()): boolean {
+  // the wrapper bundle's executable is a shell script named "clawdbox"; the real app's is "Clawdbox"
+  return existsSync(join(appDir, 'Contents', 'MacOS', APP_NAME)) && existsSync(join(appDir, 'Contents', 'Resources'));
+}
+
+export function daemonConfigPath(): string {
+  return join(homedir(), 'Library', 'Application Support', 'clawdbox', 'daemon.json');
+}
+
+/** Written for Clawdbox.app's supervisor: how to start the daemon. */
+export function writeDaemonConfig(cfg: { node: string; cli: string; args: string[]; cwd: string }, path = daemonConfigPath()): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+}
+
 export function writeAppBundle(appDir: string, files: Record<string, string>, iconPath?: string): void {
   for (const [rel, content] of Object.entries(files)) {
     const p = join(appDir, rel);

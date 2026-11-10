@@ -1,6 +1,10 @@
-// Clawdbar: a tiny macOS menu bar companion for the clawdbox daemon.
-// Shows whether the daemon is connected to the Divoom and which state Clawd is in,
-// and offers a few shortcuts (open previewer, force a state, restart the daemon).
+// Clawdbox.app: the one macOS app for clawdbox.
+//
+// It is a menu bar item that shows whether the panel is connected and which state Clawd
+// is in, with shortcuts (previewer, force a state, restart, logs, install update). It is
+// also the daemon's host: when install-launchd has written a daemon config, the app
+// spawns the node daemon as a child and supervises it. The child inherits this app's
+// Bluetooth permission, which is why a separate wrapper bundle is not needed.
 //
 // Build with menubar/build.sh (needs only the Xcode command line tools).
 
@@ -70,7 +74,7 @@ struct Rendering {
 
     static func offline() -> Rendering {
         Rendering(title: " offline", dimmed: true, connection: "Daemon not running",
-                  showing: "Use Restart Daemon below, or: clawdbox daemon --ble", transport: "", sessions: "", update: nil)
+                  showing: "Use Restart Daemon below, or re-run the installer", transport: "", sessions: "", update: nil)
     }
 
     init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String, update: String?) {
@@ -118,6 +122,95 @@ func fetchStateSync(timeout: TimeInterval = 3) -> Result<DaemonState, Error> {
 }
 let allStates = ["idle", "thinking", "ultrathink", "reading", "writing", "running", "needs-you", "coffee", "vibing", "wave", "done", "error", "heart"]
 let launchdLabel = "com.clawdbox.daemon"
+let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/clawdbox")
+let logsDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
+
+// MARK: - Daemon supervisor
+
+/// Written by `clawdbox install-launchd`: how to start the daemon.
+struct DaemonConfig: Decodable {
+    let node: String
+    let cli: String
+    let args: [String]
+    let cwd: String
+}
+
+/// Runs the node daemon as a child process and restarts it with backoff when it exits.
+final class DaemonSupervisor {
+    private let config: DaemonConfig
+    private var process: Process?
+    private var backoff: TimeInterval = 2
+    private var stopped = false
+    private var logHandle: FileHandle?
+
+    init?(configURL: URL) {
+        guard let data = try? Data(contentsOf: configURL),
+              let cfg = try? JSONDecoder().decode(DaemonConfig.self, from: data) else { return nil }
+        // Refuse anything outside the user's home or that is not clawdbox's own CLI.
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        guard cfg.cwd.hasPrefix(home + "/"), cfg.cli.hasPrefix(cfg.cwd + "/"), cfg.cli.hasSuffix("/dist/cli.js"),
+              FileManager.default.isExecutableFile(atPath: cfg.node) else { return nil }
+        config = cfg
+    }
+
+    func start() {
+        stopped = false
+        spawn()
+    }
+
+    private func spawn() {
+        guard !stopped, process == nil else { return }
+        try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        let log = logsDir.appendingPathComponent("clawdbox.log")
+        if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
+        logHandle = try? FileHandle(forWritingTo: log)
+        logHandle?.seekToEndOfFile()
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: config.node)
+        p.arguments = [config.cli, "daemon"] + config.args
+        p.currentDirectoryURL = URL(fileURLWithPath: config.cwd)
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        env["CLAWDBOX_SUPERVISED"] = "1"  // the daemon exits by itself if this app disappears
+        p.environment = env
+        p.standardOutput = logHandle
+        p.standardError = logHandle
+        p.terminationHandler = { [weak self] proc in
+            DispatchQueue.main.async { self?.exited(code: proc.terminationStatus) }
+        }
+        do {
+            try p.run()
+            process = p
+            backoff = 2
+        } catch {
+            exited(code: -1)
+        }
+    }
+
+    private func exited(code: Int32) {
+        process = nil
+        try? logHandle?.close()
+        logHandle = nil
+        guard !stopped else { return }
+        let delay = backoff
+        backoff = min(backoff * 2, 30)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.spawn() }
+    }
+
+    /// SIGTERM lets the daemon disconnect the panel cleanly; the supervisor restarts it.
+    func restart() {
+        process?.terminate()
+    }
+
+    func stop() {
+        stopped = true
+        process?.terminate()
+        let p = process
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { if p?.isRunning == true { kill(p!.processIdentifier, SIGKILL) } }
+    }
+
+    var isRunning: Bool { process?.isRunning == true }
+}
 
 // MARK: - Clawd icon drawn from the same 12x8 body the panel uses
 
@@ -161,8 +254,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let sessionsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let installUpdateItem = NSMenuItem(title: "Install Update…", action: #selector(installUpdate), keyEquivalent: "u")
+    private var supervisor: DaemonSupervisor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Host the daemon when install-launchd configured one (and we were not told to stay a pure UI).
+        if !CommandLine.arguments.contains("--no-daemon"),
+           let sup = DaemonSupervisor(configURL: supportDir.appendingPathComponent("daemon.json")) {
+            supervisor = sup
+            sup.start()
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = clawdIcon(dimmed: true)
         statusItem.button?.imagePosition = .imageLeading
@@ -208,9 +308,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(logs)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Clawdbar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Clawdbox", action: #selector(quitApp), keyEquivalent: "q")
+        quit.target = self
         menu.addItem(quit)
         return menu
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        supervisor?.stop()
+    }
+
+    /// Under launchd, quitting would just get us relaunched; unload the agent first so
+    /// "Quit" means "until next login" (the installer or launchctl bootstrap brings it back).
+    @objc private func quitApp() {
+        supervisor?.stop()
+        if supervisor != nil {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            task.arguments = ["bootout", "gui/\(getuid())/\(launchdLabel)"]
+            try? task.run()
+        }
+        NSApp.terminate(nil)
     }
 
     // MARK: polling
@@ -263,6 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func restartDaemon() {
+        if let sup = supervisor {
+            sup.restart()
+            return
+        }
+        // not hosting the daemon ourselves: ask launchd (older wrapper-bundle installs)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = ["kickstart", "-k", "gui/\(getuid())/\(launchdLabel)"]
@@ -277,9 +400,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = [root.appendingPathComponent("scripts/update.sh").path]
-        let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
-        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
-        let log = logDir.appendingPathComponent("update.log")
+        try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        let log = logsDir.appendingPathComponent("update.log")
         if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
         if let handle = try? FileHandle(forWritingTo: log) {
             handle.seekToEndOfFile()
@@ -292,13 +414,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showLogs() {
-        let logs = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/clawdbox/clawdbox.log")
-        NSWorkspace.shared.open(logs)
+        NSWorkspace.shared.open(logsDir.appendingPathComponent("clawdbox.log"))
     }
 }
 
-// `Clawdbar --check`: print what the menu bar would show and exit (used by CI and for debugging).
+// `Clawdbox --check`: print what the menu bar would show and exit (used by CI and for debugging).
 if CommandLine.arguments.contains("--check") {
     switch fetchStateSync() {
     case .success(let state):
@@ -324,4 +444,9 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
+// launchctl kickstart -k sends SIGTERM; terminate through AppKit so applicationWillTerminate stops the daemon child.
+signal(SIGTERM, SIG_IGN)
+let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+termSource.setEventHandler { NSApp.terminate(nil) }
+termSource.resume()
 app.run()

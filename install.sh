@@ -6,8 +6,8 @@
 #   ./install.sh                                                      # from a checkout
 #
 # Does everything: clone or update the checkout, install Node and Python deps, build,
-# install the Claude Code hooks, install the daemon as a login agent, install the Clawdbar
-# menu bar app, then wait for Clawd to appear on the panel. Re-running it updates an
+# install the Claude Code hooks, build Clawdbox.app (menu bar + daemon host), install it
+# as a login agent, then wait for Clawd to appear on the panel. Re-running it updates an
 # existing install. Options:
 #
 #   --dir PATH        where to keep the checkout (default ~/Tools/clawdbox, or the current checkout)
@@ -101,6 +101,7 @@ if [ "$LAUNCHD" = 1 ]; then
   step "stopping the running daemon"
   launchctl bootout "gui/$(id -u)/com.clawdbox.daemon" 2>/dev/null || true
   launchctl bootout "gui/$(id -u)/com.clawdbox.update" 2>/dev/null || true
+  pkill -x Clawdbox 2>/dev/null || true
   pkill -f "$DIR/dist/cli.js daemon" 2>/dev/null || true
   pkill -f "$DIR/bridge/clawdbox_ble.py" 2>/dev/null || true
   sleep 1
@@ -128,21 +129,21 @@ if [ "$HOOKS" = 1 ]; then
   node dist/cli.js install-hooks
 fi
 
+# ---------- the app (menu bar + daemon host) ----------
+if [ "$MENUBAR" = 1 ]; then
+  step "building Clawdbox.app"
+  if [ "$LAUNCHD" = 1 ]; then menubar/install.sh; else menubar/install.sh --login-item; fi
+fi
+
 # ---------- daemon ----------
 ARGS=("${TRANSPORT[@]}")
 if [ -n "$BRIGHTNESS" ]; then ARGS+=(--brightness "$BRIGHTNESS"); fi
 if [ "$LAUNCHD" = 1 ]; then
-  step "installing the daemon as a login agent"
+  step "installing the login agent"
   if [ "$AUTOUPDATE" = 0 ]; then ARGS+=(--no-auto-update); fi
   node dist/cli.js install-launchd "${ARGS[@]}"
 else
   echo "skipping the login agent; run:  node dist/cli.js daemon ${ARGS[*]} -v"
-fi
-
-# ---------- menu bar ----------
-if [ "$MENUBAR" = 1 ]; then
-  step "installing the Clawdbar menu bar app"
-  menubar/install.sh
 fi
 
 # ---------- wait for Clawd ----------

@@ -22,6 +22,10 @@ import {
   appBundleFiles,
   appBundlePath,
   writeAppBundle,
+  isHostingApp,
+  hostingAppBinary,
+  writeDaemonConfig,
+  daemonConfigPath,
   updaterPlist,
   updaterPlistPath,
   UPDATER_LABEL,
@@ -314,7 +318,7 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
       console.log(`auto-update:   ${upath} (every ${UPDATE_HOURS} h, log in ${join(logs, 'update.log')})`);
     else console.warn(`the updater agent was written but not loaded; load it with: launchctl bootstrap ${domain} ${upath}`);
   }
-  console.log(`app bundle:    ${appDir}\nlaunchd agent: ${path}\nlogs:          ${logs}`);
+  console.log(`launchd agent: ${path}\nlogs:          ${logs}`);
   console.log(`\nIf macOS asks whether Clawdbox may use Bluetooth, allow it. Follow along with:  tail -f ${join(logs, 'clawdbox.log')}`);
   console.log(`A daemon still running in a terminal will keep port ${cfg.port}; stop it (Ctrl-C) so the agent can take over.`);
   if (!v['no-auto-update'])
@@ -329,8 +333,9 @@ function cmdUninstallLaunchd(): void {
   launchctl(['bootout', `${domain}/${UPDATER_LABEL}`], true);
   rmSync(launchdPlistPath(), { force: true });
   rmSync(updaterPlistPath(), { force: true });
-  rmSync(appBundlePath(), { recursive: true, force: true });
-  console.log('launchd agents and app bundle removed');
+  rmSync(daemonConfigPath(), { force: true });
+  if (!isHostingApp()) rmSync(appBundlePath(), { recursive: true, force: true }); // the wrapper; the real app is menubar/uninstall.sh's
+  console.log('launchd agents removed');
 }
 
 async function cmdDiscover(): Promise<void> {

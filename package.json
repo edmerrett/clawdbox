@@ -66,7 +66,7 @@
     "scripts/update.sh",
     "web",
     "hooks",
-    "menubar/ClawdbarApp.swift",
+    "menubar/ClawdboxApp.swift",
     "menubar/Info.plist",
     "menubar/build.sh",
     "menubar/install.sh",
