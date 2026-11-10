@@ -57,8 +57,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: menubar/build.sh build
-      - name: one-shot installer (build-only flags)
-        run: ./install.sh --no-hooks --no-launchd --no-menubar
       # Run a real daemon against the mock panel and make sure the app renders its state.
       - name: menu bar app reports connection and current mode
         run: |
@@ -70,14 +68,19 @@ jobs:
           grep -q '^connected: true' check1.txt
           grep -q '^transport: mock' check1.txt
           grep -q '^title: idle' check1.txt
+          grep -q '^anims: 13 (idle: [1-9]' check1.txt
           curl -sf -X POST http://127.0.0.1:7676/show/reading >/dev/null
           sleep 2
-          echo "--- after forcing reading"; "$APP" --check | tee check2.txt
+          mkdir -p shots
+          echo "--- after forcing reading"; "$APP" --check --snapshot shots/digital-divoom.png | tee check2.txt
+          grep -q '^anims: 13 (reading: [1-9]' check2.txt
+          test -s shots/digital-divoom.png
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           echo "--- launch the real menu bar app and read its status item"
-          open menubar/build/Clawdbox.app || (menubar/build/Clawdbox.app/Contents/MacOS/Clawdbox >/dev/null 2>&1 &)
-          sleep 5
+          # --open-menu clicks the icon; CLAWDBOX_PANEL_LOG logs each frame the digital Divoom draws.
+          CLAWDBOX_PANEL_LOG=1 "$APP" --no-daemon --open-menu >/dev/null 2>panel.log &
+          sleep 8
           pgrep -x Clawdbox >/dev/null && echo "Clawdbox is running as a GUI app"
           # Read the live NSStatusItem title through the accessibility tree (may need permission on some runners).
           osascript -e 'tell application "System Events" to tell process "Clawdbox" to get value of attribute "AXTitle" of menu bar item 1 of menu bar 2' > statusitem.txt 2>&1 || true
@@ -88,13 +91,32 @@ jobs:
           sips -g pixelWidth -g pixelHeight shots/menubar-full.png | tail -2
           W=$(sips -g pixelWidth shots/menubar-full.png | awk '/pixelWidth/{print $2}')
           sips -c 80 900 --cropOffset 0 $((W-900)) shots/menubar-full.png --out shots/menubar-right.png >/dev/null
+          sips -c 700 900 --cropOffset 0 $((W-900)) shots/menubar-full.png --out shots/menu-open-reading.png >/dev/null
+          echo "--- change state while the menu is open"
+          curl -sf -X POST http://127.0.0.1:7676/show/writing >/dev/null
+          sleep 4
+          screencapture -x shots/menu-open-writing-full.png
+          sips -c 700 900 --cropOffset 0 $((W-900)) shots/menu-open-writing-full.png --out shots/menu-open-writing.png >/dev/null
           pkill -x Clawdbox || true
+          echo "--- what the digital Divoom drew"; sort panel.log | uniq -c
+          grep -q '^menu opened' panel.log
+          # the open menu played several frames of the reading loop, then followed the daemon to writing
+          test "$(grep 'state=reading .*inMenu=true' panel.log | sort -u | wc -l)" -ge 2
+          test "$(grep 'state=writing .*inMenu=true' panel.log | sort -u | wc -l)" -ge 2
+          echo "--- the digital Divoom as drawn (snapshot, then the open menu showing reading and writing)"
+          python3 test/panel-ascii.py shots/digital-divoom.png --require-lit
+          python3 test/panel-ascii.py shots/menubar-full.png --require-lit
+          python3 test/panel-ascii.py shots/menu-open-writing-full.png --require-lit
           kill %1; sleep 1
           echo "--- daemon down"
           set +e; "$APP" --check > check3.txt; rc=$?; set -e
           cat check3.txt
           test "$rc" -ne 0
           grep -q '^title: offline' check3.txt
+      # Last: on CI's detached HEAD the installer switches the checkout to main, which would
+      # otherwise swap the daemon and test files under the steps above.
+      - name: one-shot installer (build-only flags)
+        run: ./install.sh --no-hooks --no-launchd --no-menubar
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -103,3 +125,4 @@ jobs:
             shots/
             statusitem.txt
             check*.txt
+            panel.log
