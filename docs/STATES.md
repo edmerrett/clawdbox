@@ -3,7 +3,7 @@
 
 | state | sticker | triggered by |
 |---|---|---|
-| `idle` | Clawd | `SessionStart`, `Stop`, `Notification(idle_prompt)`, or 90 s of silence while busy (Esc fires no `Stop`) |
+| `idle` | Clawd | `SessionStart`, `Stop`, `Notification(idle_prompt)`, an interrupted tool, or a session going silent while busy (see [Interrupts](#interrupts-esc--stop)) |
 | `thinking` | Clawd Lightbulb | `UserPromptSubmit`, every `PostToolUse`, unknown tools |
 | `ultrathink` | Clawd Shiny | thinking, for the rest of a turn whose prompt contained "ultrathink" |
 | `reading` | Clawd Magnifier | `PreToolUse` for Read, Grep, Glob, WebFetch, WebSearch, MCP tools that look like reads |
@@ -38,6 +38,7 @@ traced from the Clawd-with-laptop GIF. Clawd is Anthropic's character. This is a
 | `PreToolUse` | anything else | **thinking** |
 | `PostToolUse` | any | **thinking** (or ultrathink) |
 | `PostToolUseFailure` | not an Esc interrupt | **thinking**, plus an **error** flash |
+| `PostToolUseFailure` | `is_interrupt` (you stopped the tool) | **idle** |
 | `PermissionRequest` | any | **needs-you** |
 | `PermissionDenied` | any | **thinking** |
 | `Notification` | `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` | **needs-you** |
@@ -51,5 +52,23 @@ traced from the Clawd-with-laptop GIF. Clawd is Anthropic's character. This is a
 
 The installer subscribes to eleven events; the other Claude Code hook events are not registered and cost nothing.
 Events with an `agent_id` (subagents) are ignored. Events for a session the daemon has never seen are ignored unless
-they are `SessionStart`, `UserPromptSubmit` or `PreToolUse`. Ninety seconds of silence while busy falls back to idle
-(Esc fires no `Stop`). Ten idle minutes brings coffee, twenty brings headphones, then they alternate.
+they are `SessionStart`, `UserPromptSubmit` or `PreToolUse`. Ten idle minutes brings coffee, twenty brings
+headphones, then they alternate.
+
+## Interrupts (Esc / stop)
+
+Claude Code runs no hook when you interrupt a turn: `Stop` "does not run if the stoppage occurred due to a user
+interrupt", and nothing else takes its place. The daemon therefore reads silence as an interrupt, session by session:
+
+| Session state | Silent for | Result |
+|---|---|---|
+| thinking, ultrathink, reading, writing | 60 s (`--idle-ms`) | that session goes **idle** |
+| running, needs-you | 5 min (`--wait-ms`) | that session goes **idle** |
+| running | 60 s (`--idle-ms`) | still **running**, but ranks below any session that is visibly active |
+
+Running and needs-you wait longer because a long command and an unanswered prompt are silent for good reason. Each
+session has its own clock, so another session's events do not keep an interrupted one alive, and an interrupted
+session stops outranking the others: after 60 s the panel belongs to whichever session is still working. Subagent
+events do not change the state but do count as a sign of life for their session. If Claude Code does report the
+interrupt (`PostToolUseFailure` with `is_interrupt`), the session goes idle at once. A session that was wrongly
+idled (a slow response with no tool calls) comes back on its next event.

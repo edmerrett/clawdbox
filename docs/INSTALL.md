@@ -56,7 +56,8 @@ command line tools the installer falls back to a plain wrapper bundle with no me
 --anims DIR               animation directory (default art/anims)
 --brightness 0-100        panel brightness, applied on every (re)connect; default 100
 --hold-ms 2000            minimum time a state stays on screen
---idle-ms 90000           silence before a busy state falls back to idle
+--idle-ms 60000           silence before a thinking/reading/writing session counts as interrupted and goes idle
+--wait-ms 300000          the same for running and needs-you (a long command or an unanswered prompt)
 --coffee-min 10           minutes idle before the coffee/headphones stages start (0 disables)
 --flash-ms 3500           how long wave/done/error/heart stay up
 --port 7676               TCP port for the previewer and status

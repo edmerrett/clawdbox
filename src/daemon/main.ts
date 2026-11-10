@@ -35,7 +35,10 @@ export interface DaemonConfig {
   /** Panel brightness applied on every connect (0-100). */
   brightness: number;
   minHoldMs: number;
+  /** A thinking/reading/writing session silent this long is taken to be interrupted and goes idle. */
   idleAfterMs: number;
+  /** The same for running and needs-you, which are silent for good reason; a longer wait. */
+  waitAfterMs: number;
   flashMs: number;
   doneAfterMs: number;
   idleStageAfterMs: number;
@@ -60,7 +63,8 @@ export const DEFAULT_CONFIG: DaemonConfig = {
   port: 7676,
   host: '127.0.0.1',
   minHoldMs: DEFAULT_SCHEDULER.minHoldMs,
-  idleAfterMs: DEFAULT_SCHEDULER.idleAfterMs,
+  idleAfterMs: 60_000,
+  waitAfterMs: 5 * 60_000,
   flashMs: DEFAULT_SCHEDULER.flashMs,
   doneAfterMs: 10_000,
   idleStageAfterMs: DEFAULT_SCHEDULER.idleStageAfterMs,
@@ -138,32 +142,30 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   const reducer = new Reducer({ doneAfterMs: cfg.doneAfterMs });
   const sched = new Scheduler({
     minHoldMs: cfg.minHoldMs,
-    idleAfterMs: cfg.idleAfterMs,
     maxBoundaryWaitMs: DEFAULT_SCHEDULER.maxBoundaryWaitMs,
     flashMs: cfg.flashMs,
     idleStageAfterMs: cfg.idleStageAfterMs,
     idleStageCycleMs: cfg.idleStageCycleMs,
-    onIdleFallback: (now) => {
-      log('no events for a while; treating the session as idle');
-      reducer.idleAll(now);
-    },
     loopMs: Object.fromEntries(Object.entries(anims).map(([k, a]) => [k, loopMs(a)])) as Record<State, number>,
   });
 
   let forced: State | null = null;
+  let forcedAt = 0;
+  const aggregate = (now: number) => reducer.aggregate(now, cfg.idleAfterMs);
   const onEvent = (ev: HookEvent) => {
     const now = Date.now();
     const { action, flash } = reducer.apply(ev, now);
     forced = null;
     debug(
-      `event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${reducer.aggregate()}`,
+      `event ${ev.hook_event_name ?? '?'} ${ev.tool_name ?? ''} ${ev.notification_type ?? ''} -> ${JSON.stringify(action)}${flash ? ` flash=${flash}` : ''} agg=${aggregate(now)}`,
     );
-    sched.setTarget(reducer.aggregate(), now);
+    sched.setTarget(aggregate(now), now);
     if (flash) sched.flash(flash, now);
   };
   const onForce = (s: State) => {
     forced = s;
     const now = Date.now();
+    forcedAt = now;
     if (isFlashState(s)) sched.flash(s, now);
     else if (isActivityState(s)) sched.setTarget(s, now);
     else if (isIdleStage(s)) {
@@ -220,9 +222,15 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     const dropped = reducer.prune(now, cfg.sessionTtlMs, MAX_SESSIONS);
     if (dropped.length) {
       log(`dropped stale sessions: ${dropped.join(', ')}`);
-      sched.setTarget(reducer.aggregate(), now);
     }
+    // No hook fires when a turn is interrupted, so silence is the only sign of it.
+    const expired = reducer.expire(now, cfg.idleAfterMs, cfg.waitAfterMs);
+    if (expired.length) log(`no events for a while; treating as idle: ${expired.join(', ')}`);
     if (forced && sched.current !== forced && sched.pending !== forced) forced = null;
+    // a previewed busy state does not outstay a real one
+    if (forced && forced !== 'idle' && isActivityState(forced) && now - forcedAt > cfg.idleAfterMs) forced = null;
+    // Sessions expire, and a quiet `running` one yields to an active one, with time alone; keep the panel in step.
+    if (!forced && sched.target !== aggregate(now)) sched.setTarget(aggregate(now), now);
     if (busy) return;
     const next = sched.tick(now);
     if (!next) return;
