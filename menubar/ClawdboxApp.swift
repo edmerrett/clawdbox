@@ -1,7 +1,8 @@
 // Clawdbox.app: the one macOS app for clawdbox.
 //
 // It is a menu bar item that shows whether the panel is connected and which state Clawd
-// is in, with shortcuts (previewer, force a state, restart, logs, install update). It is
+// is in, with shortcuts (previewer, force a state, restart, logs, install update). Its
+// menu opens on a small digital Divoom that plays the animation the panel is showing. It is
 // also the daemon's host: when install-launchd has written a daemon config, the app
 // spawns the node daemon as a child and supervises it. The child inherits this app's
 // Bluetooth permission, which is why a separate wrapper bundle is not needed.
@@ -105,20 +106,64 @@ struct Rendering {
     }
 }
 
-/// Fetch /state once, synchronously. Used by `--check`.
-func fetchStateSync(timeout: TimeInterval = 3) -> Result<DaemonState, Error> {
-    var request = URLRequest(url: daemonBase.appendingPathComponent("state"))
+/// GET a daemon path once, synchronously. Used by `--check` and `--snapshot`.
+func fetchSync(_ path: String, timeout: TimeInterval = 3) -> Result<Data, Error> {
+    var request = URLRequest(url: daemonBase.appendingPathComponent(path))
     request.timeoutInterval = timeout
     let sem = DispatchSemaphore(value: 0)
-    var result: Result<DaemonState, Error> = .failure(URLError(.unknown))
+    var result: Result<Data, Error> = .failure(URLError(.unknown))
     URLSession.shared.dataTask(with: request) { data, _, error in
         defer { sem.signal() }
-        if let error = error { result = .failure(error); return }
-        do { result = .success(try JSONDecoder().decode(DaemonState.self, from: data ?? Data())) }
-        catch { result = .failure(error) }
+        if let error = error { result = .failure(error) } else { result = .success(data ?? Data()) }
     }.resume()
     sem.wait()
     return result
+}
+
+func fetchStateSync(timeout: TimeInterval = 3) -> Result<DaemonState, Error> {
+    fetchSync("state", timeout: timeout).flatMap { data in
+        Result { try JSONDecoder().decode(DaemonState.self, from: data) }
+    }
+}
+
+// MARK: - Animations (GET http://127.0.0.1:7676/anims)
+
+/// The daemon's palette-index JSON for one animation (see src/anim/types.ts, AnimFile).
+struct AnimFile: Decodable {
+    struct Frame: Decodable {
+        let ms: Int
+        let palette: [String]
+        let idx: [Int]
+    }
+    let frames: [Frame]
+}
+
+let panelSide = 16
+
+/// One decoded frame: 256 pixels as 0xRRGGBB, row-major, top-left first.
+struct PanelFrame {
+    let ms: Int
+    let pixels: [UInt32]
+}
+
+/// Decode /anims into frames per state. Malformed animations are dropped, not guessed at.
+func decodeAnims(_ data: Data) -> [String: [PanelFrame]] {
+    guard let files = try? JSONDecoder().decode([String: AnimFile].self, from: data) else { return [:] }
+    var out: [String: [PanelFrame]] = [:]
+    for (name, file) in files {
+        var frames: [PanelFrame] = []
+        for f in file.frames {
+            let palette = f.palette.compactMap { hex -> UInt32? in
+                guard hex.hasPrefix("#"), hex.count == 7 else { return nil }
+                return UInt32(hex.dropFirst(), radix: 16)
+            }
+            guard palette.count == f.palette.count, f.idx.count == panelSide * panelSide,
+                  f.idx.allSatisfy({ $0 >= 0 && $0 < palette.count }) else { break }
+            frames.append(PanelFrame(ms: f.ms, pixels: f.idx.map { palette[$0] }))
+        }
+        if !frames.isEmpty, frames.count == file.frames.count { out[name] = frames }
+    }
+    return out
 }
 let allStates = ["idle", "thinking", "ultrathink", "reading", "writing", "running", "needs-you", "coffee", "vibing", "wave", "done", "error", "heart"]
 let launchdLabel = "com.clawdbox.daemon"
@@ -240,11 +285,147 @@ func clawdIcon(dimmed: Bool) -> NSImage {
     return image
 }
 
+// MARK: - The digital Divoom at the top of the menu
+
+/// A little TimeBox: dark body, 16x16 LED grid playing the current state's loop, and the
+/// state's name underneath. It animates only while the menu is open.
+final class PanelView: NSView {
+    static let cell: CGFloat = 8
+    static let bezel: CGFloat = 10
+    static let side: CGFloat = 8 * 16 + 10 * 2
+    static let size = NSSize(width: 220, height: 8 * 16 + 10 * 2 + 40)
+
+    var anims: [String: [PanelFrame]] = [:] {
+        didSet { restart() }
+    }
+    private var state = ""
+    private var caption = "…"
+    private var dimmed = true
+    private var index = 0
+    private var playing = false
+    private var timer: Timer?
+
+    override var isFlipped: Bool { true }
+
+    init() {
+        super.init(frame: NSRect(origin: .zero, size: PanelView.size))
+        autoresizingMask = [.width]
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// `state` is an animation name ("" for a dark panel); `dimmed` when the real panel is not connected.
+    func show(state: String, caption: String, dimmed: Bool) {
+        let changed = state != self.state
+        self.state = state
+        self.caption = caption
+        self.dimmed = dimmed
+        setAccessibilityLabel("Divoom panel: \(caption)")
+        if changed { restart() } else { needsDisplay = true }
+    }
+
+    func play() {
+        playing = true
+        restart()
+    }
+
+    func pause() {
+        playing = false
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private var frames: [PanelFrame] { anims[state] ?? [] }
+
+    private func restart() {
+        index = 0
+        timer?.invalidate()
+        timer = nil
+        needsDisplay = true
+        scheduleNext()
+    }
+
+    private func scheduleNext() {
+        let f = frames
+        guard playing, f.count > 1 else { return }
+        let ms = max(f[index % f.count].ms, 30)
+        let t = Timer(timeInterval: Double(ms) / 1000, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            let n = self.frames.count
+            self.index = n > 0 ? (self.index + 1) % n : 0
+            self.needsDisplay = true
+            self.scheduleNext()
+        }
+        // .common: the run loop is in event-tracking mode while a menu is open
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let cell = PanelView.cell
+        let body = NSRect(x: ((bounds.width - PanelView.side) / 2).rounded(), y: 8, width: PanelView.side, height: PanelView.side)
+        NSColor(white: 0.16, alpha: 1).setFill()
+        NSBezierPath(roundedRect: body, xRadius: 14, yRadius: 14).fill()
+        let screen = body.insetBy(dx: PanelView.bezel - 2, dy: PanelView.bezel - 2)
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: screen, xRadius: 4, yRadius: 4).fill()
+
+        let f = frames
+        let pixels: [UInt32]? = f.isEmpty ? nil : f[index % f.count].pixels
+        let off = NSColor(white: 0.09, alpha: 1)
+        let alpha: CGFloat = dimmed ? 0.4 : 1
+        let x0 = body.minX + PanelView.bezel
+        let y0 = body.minY + PanelView.bezel
+        for i in 0..<(panelSide * panelSide) {
+            let rgb = pixels?[i] ?? 0
+            if rgb == 0 {
+                off.setFill()
+            } else {
+                NSColor(srgbRed: CGFloat((rgb >> 16) & 0xff) / 255, green: CGFloat((rgb >> 8) & 0xff) / 255,
+                        blue: CGFloat(rgb & 0xff) / 255, alpha: alpha).setFill()
+            }
+            // each LED is a 7pt square on an 8pt pitch
+            NSRect(x: x0 + CGFloat(i % panelSide) * cell + 0.5, y: y0 + CGFloat(i / panelSide) * cell + 0.5,
+                   width: cell - 1, height: cell - 1).fill()
+        }
+
+        let text = NSAttributedString(string: caption, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        let size = text.size()
+        text.draw(at: NSPoint(x: ((bounds.width - size.width) / 2).rounded(), y: body.maxY + 8))
+    }
+}
+
+/// What the digital Divoom shows for a rendering: the current loop, or a dark panel when the daemon is away.
+func configure(_ panel: PanelView, state: DaemonState?) {
+    if let s = state {
+        panel.show(state: s.current, caption: s.device.connected ? s.current : "\(s.current) (no panel)", dimmed: !s.device.connected)
+    } else {
+        panel.show(state: "", caption: "offline", dimmed: true)
+    }
+}
+
+/// Draw the digital Divoom to a PNG without opening the menu. Used by `--snapshot` (CI screenshots).
+func snapshotPanel(_ panel: PanelView, to path: String) -> Bool {
+    guard let rep = panel.bitmapImageRepForCachingDisplay(in: panel.bounds) else { return false }
+    panel.cacheDisplay(in: panel.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+}
+
 // MARK: - App
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var timer: Timer?
+    private var openTimer: Timer?
+    private let panel = PanelView()
+    private var fetchingAnims = false
+    private var animsUptime = Int.max
     private var lastState: DaemonState?
     private var reachable = false
 
@@ -274,6 +455,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
+        let panelItem = NSMenuItem()
+        panelItem.view = panel
+        menu.addItem(panelItem)
+        menu.addItem(.separator())
         for item in [connectionItem, showingItem, transportItem, sessionsItem, updateItem] {
             item.isEnabled = false
             menu.addItem(item)
@@ -331,6 +517,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    // MARK: menu open/close: the digital Divoom animates, and follows the daemon closely, only while visible
+
+    func menuWillOpen(_ menu: NSMenu) {
+        panel.play()
+        refresh()
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.refresh() }
+        RunLoop.main.add(t, forMode: .common)  // the 2 s timer does not fire while the menu tracks events
+        openTimer = t
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        openTimer?.invalidate()
+        openTimer = nil
+        panel.pause()
+    }
+
+    /// Load the sprites once, and again after the daemon restarts (they may have been rebuilt).
+    private func loadAnimsIfNeeded(uptime: Int) {
+        guard !fetchingAnims, panel.anims.isEmpty || uptime < animsUptime else { return }
+        fetchingAnims = true
+        var request = URLRequest(url: daemonBase.appendingPathComponent("anims"))
+        request.timeoutInterval = 3
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            let anims = error == nil ? decodeAnims(data ?? Data()) : [:]
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.fetchingAnims = false
+                if !anims.isEmpty { self.panel.anims = anims }
+            }
+        }.resume()
+    }
+
     // MARK: polling
 
     private func refresh() {
@@ -342,6 +560,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let data = data, error == nil, let state = try? JSONDecoder().decode(DaemonState.self, from: data) {
                     self.reachable = true
                     self.lastState = state
+                    self.loadAnimsIfNeeded(uptime: state.uptimeSec)
+                    self.animsUptime = state.uptimeSec
                 } else {
                     self.reachable = false
                 }
@@ -355,6 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if reachable, let s = lastState { r = Rendering(s) } else { r = Rendering.offline() }
         statusItem.button?.image = clawdIcon(dimmed: r.dimmed)
         statusItem.button?.title = r.title
+        configure(panel, state: reachable ? lastState : nil)
         connectionItem.title = r.connection
         showingItem.title = r.showing
         transportItem.title = r.transport
@@ -431,6 +652,18 @@ if CommandLine.arguments.contains("--check") {
         print(r.showing)
         print(r.sessions)
         if let u = r.update { print(u) }
+        // The digital Divoom: the sprites it plays, and optionally a PNG of it (`--snapshot <file>`).
+        var anims: [String: [PanelFrame]] = [:]
+        if case .success(let data) = fetchSync("anims") { anims = decodeAnims(data) }
+        print("anims: \(anims.count) (\(state.current): \(anims[state.current]?.count ?? 0) frames)")
+        if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
+            _ = NSApplication.shared
+            let panel = PanelView()
+            panel.anims = anims
+            configure(panel, state: state)
+            let path = CommandLine.arguments[i + 1]
+            print("snapshot: \(snapshotPanel(panel, to: path) ? path : "failed")")
+        }
         exit(0)
     case .failure(let error):
         let r = Rendering.offline()

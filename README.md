@@ -60,7 +60,8 @@ Claude Code ──hook──▶ private socket ──▶ clawdbox daemon ──�
 Claude Code's [hooks](https://code.claude.com/docs/en/hooks) fire on every tool call, prompt, permission request and
 stop. Each one posts a little JSON to the daemon's private Unix socket in the background and never waits. The daemon
 works out what Clawd should be doing, smooths the flicker of rapid tool calls, and streams the right loop to the
-panel. A browser previewer at <http://127.0.0.1:7676> shows the same thing; the menu bar shows connection and state.
+panel. A browser previewer at <http://127.0.0.1:7676> shows the same thing; the menu bar shows connection and state,
+and clicking it opens a small digital Divoom playing the current animation.
 
 ## Make it yours
 

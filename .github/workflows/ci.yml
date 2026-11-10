@@ -70,9 +70,13 @@ jobs:
           grep -q '^connected: true' check1.txt
           grep -q '^transport: mock' check1.txt
           grep -q '^title: idle' check1.txt
+          grep -q '^anims: 13 (idle: [1-9]' check1.txt
           curl -sf -X POST http://127.0.0.1:7676/show/reading >/dev/null
           sleep 2
-          echo "--- after forcing reading"; "$APP" --check | tee check2.txt
+          mkdir -p shots
+          echo "--- after forcing reading"; "$APP" --check --snapshot shots/digital-divoom.png | tee check2.txt
+          grep -q '^anims: 13 (reading: [1-9]' check2.txt
+          test -s shots/digital-divoom.png
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           echo "--- launch the real menu bar app and read its status item"

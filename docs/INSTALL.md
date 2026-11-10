@@ -38,7 +38,8 @@ node dist/cli.js install-launchd --ble         # login agent + six-hourly releas
 
 One app does three jobs: it sits in the menu bar (Clawd silhouette plus the current state, dimmed when the panel is
 disconnected), it hosts the node daemon as a child process so the daemon inherits its Bluetooth permission, and it
-restarts the daemon if it dies. Its menu offers Open Previewer, Force State, Restart Daemon, Show Logs and, when a
+restarts the daemon if it dies. Click it and the menu opens on a small digital Divoom playing whatever the panel is
+showing, live. Below that the menu offers Open Previewer, Force State, Restart Daemon, Show Logs and, when a
 newer release exists, Install Update. Quit stops the daemon too, until the next login.
 `~/Applications/Clawdbox.app/Contents/MacOS/Clawdbox --check` prints what the menu bar would show. Without the Xcode
 command line tools the installer falls back to a plain wrapper bundle with no menu bar item.

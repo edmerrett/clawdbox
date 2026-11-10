@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- A small digital Divoom at the top of the menu bar menu: a 16×16 LED panel that plays the animation for the current
+  state while the menu is open, dimmed when the real panel is disconnected. `Clawdbox --check --snapshot <file>` saves
+  it as a PNG.
+
 ## 0.2.1
 
 ### Changed
