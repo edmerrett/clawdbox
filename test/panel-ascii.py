@@ -58,25 +58,40 @@ def main():
         r, g, b = px(x, y)
         return 25 <= r <= 65 and abs(r - g) < 8 and abs(g - b) < 8
 
-    # the body's top edge: the longest horizontal run of body grey (rounded corners shorten the first rows)
-    best = (0, 0, 0)
+    def is_black(x, y):
+        return sum(px(x, y)) < 30
+
+    # A row through the body's rounded top is one grey run a little under 148 pt wide; the
+    # screen's black rim sits 8-10 pt below the top edge. Take the first run that fits.
+    found = None
     for y in range(h):
         x = 0
-        while x < w:
-            if is_body(x, y):
-                x0 = x
-                while x < w and is_body(x, y):
-                    x += 1
-                if x - x0 > best[0]:
-                    best = (x - x0, x0, y)
-            else:
+        while x < w and not found:
+            if not is_body(x, y):
                 x += 1
-    side, left, y = best
-    if side < 140:
-        print(f"no panel found in {sys.argv[1]} ({w}x{h}, longest grey run {side})")
+                continue
+            x0 = x
+            while x < w and is_body(x, y):
+                x += 1
+            n = x - x0
+            scale = 2 if n > 200 else 1
+            if not 138 * scale <= n <= 149 * scale:
+                continue
+            cx, top = x0 + n // 2, y
+            while top > 0 and is_body(cx, top - 1):
+                top -= 1
+            if top + 9 * scale >= h or not is_black(cx, top + 9 * scale):
+                continue
+            row, left = top + 16 * scale, x0 + 3 * scale
+            while left > 0 and is_body(left - 1, row):
+                left -= 1
+            found = (left, top, 2 * (cx - left))
+        if found:
+            break
+    if not found:
+        print(f"no panel found in {sys.argv[1]} ({w}x{h})")
         return 1
-    while y > 0 and is_body(left + side // 2, y - 1):
-        y -= 1
+    left, y, side = found
     scale = side / 148
     lit = 0
     print(f"panel at x={left} y={y} side={side} ({w}x{h} image)")
