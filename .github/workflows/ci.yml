@@ -57,8 +57,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: menubar/build.sh build
-      - name: one-shot installer (build-only flags)
-        run: ./install.sh --no-hooks --no-launchd --no-menubar
       # Run a real daemon against the mock panel and make sure the app renders its state.
       - name: menu bar app reports connection and current mode
         run: |
@@ -115,6 +113,10 @@ jobs:
           cat check3.txt
           test "$rc" -ne 0
           grep -q '^title: offline' check3.txt
+      # Last: on CI's detached HEAD the installer switches the checkout to main, which would
+      # otherwise swap the daemon and test files under the steps above.
+      - name: one-shot installer (build-only flags)
+        run: ./install.sh --no-hooks --no-launchd --no-menubar
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
