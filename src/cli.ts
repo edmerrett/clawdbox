@@ -69,7 +69,9 @@ Usage:
                                                      app bundle + login agent + ${UPDATE_HOURS}-hourly release updater
   clawdbox uninstall-launchd
   clawdbox update [--check | --force]                update to the newest release tag, rebuild, restart the daemon
-  clawdbox show <state> [--port ${PORT}]                tell a running daemon to show a state (testing)
+  clawdbox show <state> [--hold] [--port ${PORT}]       tell a running daemon to show a state until the next hook
+                                                     event (--hold: until \`clawdbox release\`)
+  clawdbox release [--port ${PORT}]                     drop a forced state; the panel follows the hooks again
 
 States: ${STATES.join(', ')}
 `;
@@ -104,6 +106,7 @@ const OPTIONS = {
   'auto-update': { type: 'boolean', default: false },
   'no-auto-update': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
+  hold: { type: 'boolean', default: false },
   check: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
 } satisfies ParseArgsConfig['options'];
@@ -491,14 +494,18 @@ function cmdUpdate(v: Flags): void {
   }
 }
 
-async function cmdShow(cfg: DaemonConfig, state: string | undefined): Promise<void> {
-  if (!state || !isState(state)) throw new UsageError(`show needs a state: ${STATES.join(', ')}`);
+async function postDaemon(cfg: DaemonConfig, path: string): Promise<void> {
   try {
-    const res = await fetch(`http://127.0.0.1:${cfg.port}/show/${state}`, { method: 'POST' });
+    const res = await fetch(`http://127.0.0.1:${cfg.port}${path}`, { method: 'POST' });
     console.log(await res.text());
   } catch {
     throw new Error(`no daemon answered on 127.0.0.1:${cfg.port}; start one with "clawdbox daemon --ble" or restart the login agent`);
   }
+}
+
+async function cmdShow(cfg: DaemonConfig, state: string | undefined, hold: boolean): Promise<void> {
+  if (!state || !isState(state)) throw new UsageError(`show needs a state: ${STATES.join(', ')}`);
+  await postDaemon(cfg, `/show/${state}${hold ? '?hold=1' : ''}`);
 }
 
 /* ---------------- entry ---------------- */
@@ -541,7 +548,9 @@ async function main(argv: string[]): Promise<void> {
     case 'update':
       return cmdUpdate(v);
     case 'show':
-      return cmdShow(cfg, positionals[1]);
+      return cmdShow(cfg, positionals[1], Boolean(v.hold));
+    case 'release':
+      return postDaemon(cfg, '/release');
     default:
       throw new UsageError(`unknown command "${cmd}" (try --help)`);
   }

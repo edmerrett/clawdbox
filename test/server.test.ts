@@ -11,13 +11,17 @@ import { HookEvent } from '../src/daemon/reducer.js';
 import { State } from '../src/anim/types.js';
 
 const events: HookEvent[] = [];
-const forced: State[] = [];
+const forced: [State, boolean | undefined][] = [];
+let releases = 0;
+let updateChecks = 0;
 const socketPath = join(mkdtempSync(join(tmpdir(), 'clawdbox-sock-')), 'hook.sock');
 const servers = await startServers(
   { port: 0, host: '127.0.0.1', socketPath, tcpEvents: false, log: () => {} },
   {
     onEvent: (ev) => events.push(ev),
-    onForce: (s) => forced.push(s),
+    onForce: (s, hold) => forced.push([s, hold]),
+    onRelease: () => releases++,
+    checkUpdates: async () => ({ updateAvailable: false, checks: ++updateChecks }),
     status: () => ({ current: 'idle' }),
     anims: () => clawdSprites(),
     previewHtmlPath: new URL('../web/index.html', import.meta.url).pathname,
@@ -92,7 +96,19 @@ test('cross-origin POSTs are refused', async () => {
   assert.equal(res.status, 403);
   const ok = await post('/show/writing', '', { origin: `http://127.0.0.1:${port}` });
   assert.equal(ok.status, 200);
-  assert.equal(forced.at(-1), 'writing');
+  assert.deepEqual(forced.at(-1), ['writing', false]);
+});
+
+test('/show?hold=1 holds, /release releases, /update-check checks now', async () => {
+  assert.equal((await post('/show/thinking?hold=1', '')).status, 200);
+  assert.deepEqual(forced.at(-1), ['thinking', true]);
+  assert.equal((await post('/release', '')).status, 200);
+  assert.equal(releases, 1);
+  assert.equal((await post('/release', '', { origin: 'https://evil.example' })).status, 403);
+  assert.equal(releases, 1);
+  assert.deepEqual(await (await post('/update-check', '')).json(), { updateAvailable: false, checks: 1 });
+  assert.equal((await post('/update-check', '', { origin: 'https://evil.example' })).status, 403);
+  assert.equal(updateChecks, 1);
 });
 
 test('/show validates the state; /state, /anims and / serve with security headers', async () => {
@@ -110,7 +126,15 @@ test('/show validates the state; /state, /anims and / serve with security header
 test('oversize bodies get 413 when TCP events are enabled', async () => {
   const s2 = await startServers(
     { port: 0, host: '127.0.0.1', tcpEvents: true, log: () => {} },
-    { onEvent: () => {}, onForce: () => {}, status: () => ({}), anims: () => clawdSprites(), previewHtmlPath: '/dev/null' },
+    {
+      onEvent: () => {},
+      onForce: () => {},
+      onRelease: () => {},
+      checkUpdates: async () => ({}),
+      status: () => ({}),
+      anims: () => clawdSprites(),
+      previewHtmlPath: '/dev/null',
+    },
   );
   const p2 = (s2.tcp.address() as AddressInfo).port;
   const res = await fetch(`http://127.0.0.1:${p2}/event`, {

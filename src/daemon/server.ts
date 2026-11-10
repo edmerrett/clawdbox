@@ -9,6 +9,9 @@
  *   GET  /state          {current, pending, sessions, device, transport, update}
  *   GET  /anims          all animations as palette-index JSON (for the previewer)
  *   POST /show/<state>   force a state until the next hook event (testing)
+ *        ?hold=1         ...or until released, whatever the hooks say
+ *   POST /release        release a forced state; the panel follows the hooks again
+ *   POST /update-check   look for a newer release now -> the update part of /state
  *   GET  /               previewer page
  *   POST /event          only when `tcpEvents` is enabled (Claude Code's native http hooks)
  *
@@ -24,7 +27,9 @@ import { HookEvent } from './reducer.js';
 
 export interface ServerDeps {
   onEvent(ev: HookEvent): void;
-  onForce(state: State): void;
+  onForce(state: State, hold?: boolean): void;
+  onRelease(): void;
+  checkUpdates(): Promise<unknown>;
   status(): unknown;
   anims(): Record<State, Anim>;
   previewHtmlPath: string;
@@ -174,9 +179,15 @@ export async function startServers(opts: ServerOptions, deps: ServerDeps): Promi
       if (req.method === 'POST' && url.pathname.startsWith('/show/')) {
         const s = url.pathname.slice('/show/'.length);
         if (!isState(s)) return json(res, 400, { error: `unknown state ${s}` });
-        deps.onForce(s);
-        return json(res, 200, { ok: true, state: s });
+        const hold = url.searchParams.get('hold') === '1';
+        deps.onForce(s, hold);
+        return json(res, 200, { ok: true, state: s, held: hold });
       }
+      if (req.method === 'POST' && url.pathname === '/release') {
+        deps.onRelease();
+        return json(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && url.pathname === '/update-check') return json(res, 200, await deps.checkUpdates());
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
         res
           .writeHead(200, {
