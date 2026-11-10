@@ -1,11 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Added
 - A small digital Divoom at the top of the menu bar menu: a 16×16 LED panel that plays the animation for the current
   state while the menu is open, dimmed when the real panel is disconnected. `Clawdbox --check --snapshot <file>` saves
   it as a PNG.
+
+### Fixed
+- Stopping a turn (Esc / the stop button) left its state on the panel. Claude Code fires no hook on an interrupt,
+  and the only fallback was one 90 s silence timer shared by every session, so events from any other session kept
+  an interrupted one alive and, because the most urgent state wins, it kept the panel from them. Staleness is now
+  tracked per session: thinking/reading/writing go idle after 60 s of silence (`--idle-ms`), running and needs-you
+  after 5 min (`--wait-ms`, new), and a `running` session silent for 60 s no longer outranks an active one.
+- A tool failure reported as an interrupt (`is_interrupt`) sets the session idle at once instead of thinking.
+- Subagent events keep their session alive, so a turn working through subagents is not mistaken for an interrupted one.
+
+### Changed
+- `--idle-ms` defaults to 60000 (was 90000) and applies per session.
 
 ## 0.2.1
 

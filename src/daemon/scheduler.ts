@@ -8,8 +8,9 @@
  *    panel returns to whatever the reducer wants.
  *  - Long idle: after `idleStageAfterMs` with no events, idle cycles through
  *    IDLE_STAGES (coffee, vibing, ...) every `idleStageCycleMs`.
- *  - If a non-idle state receives no events for `idleAfterMs`, fall back to idle
- *    (covers Esc interrupts, where Claude Code fires no Stop hook).
+ *
+ * Interrupted turns (Esc fires no Stop hook) are not handled here: the reducer
+ * expires silent sessions one by one and the daemon passes the new target in.
  *
  * Pure and clock-free: callers pass `now` so it is easy to test.
  */
@@ -17,7 +18,6 @@ import { ActivityState, FlashState, IDLE_STAGES, State, isFlashState } from '../
 
 export interface SchedulerOptions {
   minHoldMs: number;
-  idleAfterMs: number;
   /** Loop length per state, in ms, so we can find loop boundaries. */
   loopMs: Record<State, number>;
   /** Don't wait for a loop boundary longer than this. */
@@ -28,8 +28,6 @@ export interface SchedulerOptions {
   idleStageAfterMs: number;
   /** Then move to the next stage every this often. */
   idleStageCycleMs: number;
-  /** Called when a busy target falls back to idle because events stopped (Esc interrupt). */
-  onIdleFallback?: (now: number) => void;
 }
 
 /** How close to a loop boundary counts as "at" it. */
@@ -37,7 +35,6 @@ const BOUNDARY_WINDOW_MS = 120;
 
 export const DEFAULT_SCHEDULER: Omit<SchedulerOptions, 'loopMs'> = {
   minHoldMs: 2000,
-  idleAfterMs: 90_000,
   maxBoundaryWaitMs: 1500,
   flashMs: 3500,
   idleStageAfterMs: 10 * 60_000,
@@ -49,7 +46,7 @@ export class Scheduler {
   current: State = 'idle';
   private shownAt = 0;
   /** What the reducer wants. */
-  private target: ActivityState = 'idle';
+  target: ActivityState = 'idle';
   private lastEventAt = -1;
   private flashState: FlashState | null = null;
   private flashUntil = 0;
@@ -91,12 +88,6 @@ export class Scheduler {
    */
   tick(now: number): State | null {
     if (this.flashState && now >= this.flashUntil) this.flashState = null;
-
-    // Idle fallback: nothing heard for a long time while busy.
-    if (this.target !== 'idle' && this.lastEventAt >= 0 && now - this.lastEventAt > this.opts.idleAfterMs) {
-      this.target = 'idle';
-      this.opts.onIdleFallback?.(now);
-    }
 
     const want = this.desired(now);
     if (want === this.current) return null;

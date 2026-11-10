@@ -35,6 +35,15 @@ export const DEFAULT_TOOL_RULES: ToolRule[] = [
   { match: /^mcp__.*(write|edit|create|update|apply)/i, state: 'writing' },
 ];
 
+/**
+ * States where a session is legitimately silent for a long time: a command is
+ * running, or Claude is waiting for you. They get the longer staleness timeout.
+ */
+const WAITING_STATES: ReadonlySet<ActivityState> = new Set<ActivityState>(['running', 'needs-you']);
+
+/** Rank of a quiet `running` session: above idle, below any session that is visibly active. */
+const QUIET_RANK = 0.5;
+
 const NEEDS_YOU_NOTIFICATIONS = new Set(['permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
 
 export interface ReducerOptions {
@@ -80,9 +89,13 @@ export class Reducer {
 
   /** Apply an event. Returns what happened, for the scheduler and for logging. */
   apply(ev: HookEvent, now = Date.now()): ReducerResult {
-    if (ev.agent_id) return { action: { kind: 'ignore', why: 'subagent' } };
     const id = ev.session_id ?? 'unknown';
     const rec = this.sessions.get(id);
+    if (ev.agent_id) {
+      // A subagent's events never change the state, but they prove the parent's turn is still alive.
+      if (rec && rec.state !== 'idle') this.sessions.set(id, { ...rec, updatedAt: now });
+      return { action: { kind: 'ignore', why: 'subagent' } };
+    }
     const set = (state: ActivityState, patch: Partial<SessionRecord> = {}): ReducerResult => {
       this.sessions.set(id, { ultra: false, ...rec, ...patch, state, updatedAt: now });
       return { action: { kind: 'set', state } };
@@ -123,8 +136,10 @@ export class Reducer {
         return set(this.thinkingFor(rec));
 
       case 'PostToolUseFailure': {
+        // You pressed Esc / stop while a tool ran. No Stop hook follows an interrupt, so this is the end of the turn.
+        if (ev.is_interrupt) return set('idle', { turnStartedAt: undefined, ultra: false });
         const r = set(this.thinkingFor(rec));
-        if (!ev.is_interrupt) r.flash = 'error';
+        r.flash = 'error';
         return r;
       }
 
@@ -182,19 +197,45 @@ export class Reducer {
     return dropped;
   }
 
-  /** The most urgent state across sessions; idle when there are none. */
-  aggregate(): ActivityState {
-    let best: ActivityState = 'idle';
-    for (const rec of this.sessions.values()) {
-      if (PRIORITY[rec.state] > PRIORITY[best]) best = rec.state;
+  /**
+   * Claude Code fires no hook when a turn is interrupted (Esc / the stop button), so a
+   * busy session that has gone silent is treated as interrupted and set back to idle:
+   * after `quietMs` for thinking, reading and writing, after `waitMs` for running and
+   * needs-you (a long command or an unanswered prompt is silent for good reason).
+   * Returns the ids that were idled.
+   */
+  expire(now: number, quietMs: number, waitMs: number): string[] {
+    const expired: string[] = [];
+    for (const [id, rec] of this.sessions) {
+      if (rec.state === 'idle') continue;
+      const limit = WAITING_STATES.has(rec.state) ? Math.max(quietMs, waitMs) : quietMs;
+      if (now - rec.updatedAt > limit) {
+        this.sessions.set(id, { ...rec, state: 'idle', turnStartedAt: undefined, ultra: false });
+        expired.push(id);
+      }
     }
-    return best;
+    return expired;
   }
 
-  /** The scheduler decided the panel is idle (no events for a long time); make the sessions agree. */
-  idleAll(now: number): void {
-    for (const [id, rec] of this.sessions) {
-      if (rec.state !== 'idle') this.sessions.set(id, { ...rec, state: 'idle', updatedAt: now });
+  /**
+   * The most urgent state across sessions; idle when there are none.
+   *
+   * With `now` and `quietMs`, a `running` session silent for longer than `quietMs` ranks
+   * below every session that is visibly active, so a command that was interrupted (or is
+   * just slow) cannot keep the panel from a session that is doing something. It still
+   * shows when nothing else is busy. `needs-you` is never demoted.
+   */
+  aggregate(now?: number, quietMs?: number): ActivityState {
+    let best: ActivityState = 'idle';
+    let bestRank = PRIORITY.idle;
+    for (const rec of this.sessions.values()) {
+      const quiet = rec.state === 'running' && now !== undefined && quietMs !== undefined && now - rec.updatedAt > quietMs;
+      const rank = quiet ? QUIET_RANK : PRIORITY[rec.state];
+      if (rank > bestRank) {
+        best = rec.state;
+        bestRank = rank;
+      }
     }
+    return best;
   }
 }
