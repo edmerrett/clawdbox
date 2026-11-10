@@ -168,6 +168,7 @@ exec ${shq(opts.node)} ${shq(opts.cli)} daemon ${opts.args.map(shq).join(' ')}
     <key>CFBundleShortVersionString</key><string>${esc(opts.version ?? '0')}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>clawdbox</string>
+    <key>CFBundleIconFile</key><string>Clawd</string>
     <key>LSUIElement</key><true/>
     <key>LSBackgroundOnly</key><true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
@@ -184,11 +185,16 @@ export function appBundlePath(): string {
   return join(homedir(), 'Applications', `${APP_NAME}.app`);
 }
 
-export function writeAppBundle(appDir: string, files: Record<string, string>): void {
+export function writeAppBundle(appDir: string, files: Record<string, string>, iconPath?: string): void {
   for (const [rel, content] of Object.entries(files)) {
     const p = join(appDir, rel);
-    mkdirSync(join(p, '..'), { recursive: true });
+    mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, content, { mode: rel.endsWith('/clawdbox') ? 0o755 : 0o644 });
+  }
+  if (iconPath && existsSync(iconPath)) {
+    const dest = join(appDir, 'Contents', 'Resources', 'Clawd.icns');
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(iconPath, dest);
   }
 }
 

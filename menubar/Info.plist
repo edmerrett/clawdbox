@@ -6,6 +6,7 @@
   <key>CFBundleDisplayName</key><string>Clawdbar</string>
   <key>CFBundleIdentifier</key><string>com.clawdbox.menubar</string>
   <key>CFBundleExecutable</key><string>Clawdbar</string>
+  <key>CFBundleIconFile</key><string>Clawd</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundlePackageType</key><string>APPL</string>

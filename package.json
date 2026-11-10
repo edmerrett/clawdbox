@@ -57,6 +57,7 @@
     "desk-toy"
   ],
   "files": [
+    "assets/Clawd.icns",
     "dist",
     "art/anims",
     "art/README.md",

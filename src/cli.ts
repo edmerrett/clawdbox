@@ -281,7 +281,11 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
 
   // 1. app bundle so macOS grants Bluetooth to the daemon
   const appDir = appBundlePath();
-  writeAppBundle(appDir, appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot(), version: packageVersion() }));
+  writeAppBundle(
+    appDir,
+    appBundleFiles({ node: process.execPath, cli, args, cwd: repoRoot(), version: packageVersion() }),
+    join(repoRoot(), 'assets', 'Clawd.icns'),
+  );
   const launcher = join(appDir, 'Contents', 'MacOS', 'clawdbox');
 
   // 2. launchd agent that keeps it running

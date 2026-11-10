@@ -14,6 +14,9 @@
 - Installer: `main()` wrapper, no silent `npm install` fallback, only adopts a cwd that is the official checkout,
   kills by exact path. Actions pinned by SHA; releases ship `SHA256SUMS`.
 
+### Added
+- App icon for Clawdbox.app and Clawdbar.app (assets/Clawd.icns, rendered from the sprite).
+
 ### Fixed
 - Bridge restart backoff was bypassed; `fatal` bridge errors no longer look like a closed display.
 - Device reconnect: a failed first write drops the link; serial transport no longer leaks a descriptor.
