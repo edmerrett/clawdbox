@@ -4,7 +4,8 @@
 
 ### Changed
 - Shorter README; details moved to docs/INSTALL.md, docs/HARDWARE.md, docs/STATES.md, docs/ART.md.
-- Animated explainer (docs/promo) rendered from the real sprites: MP4 for sharing, GIF as the README hero.
+- Animated explainer (docs/promo) rendered from the real sprites, with Piper narration and burned-in captions:
+  MP4 for sharing, GIF as the README hero. `scripts/make-voice.sh` regenerates the narration.
 - One app: Clawdbox.app is the menu bar item and hosts the daemon as a supervised child, replacing the wrapper
   bundle plus Clawdbar.app pair. Quit stops the daemon until next login; Restart Daemon restarts the child.
 - App icon rendered from the sprite; installers re-register the bundle so Finder and Spotlight pick it up.

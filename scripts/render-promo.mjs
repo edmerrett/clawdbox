@@ -1,5 +1,6 @@
 // Render docs/promo/explainer.html frame by frame and encode an MP4 (LinkedIn) and a GIF (README).
-// Usage: node scripts/render-promo.mjs [--fps 30] [--gif-width 720] [--out docs/promo]
+// Usage: node scripts/render-promo.mjs [--fps 30] [--gif-width 720] [--out docs/promo] [--voice docs/promo/voice]
+// With --voice, segN.m4a files are mixed in at the start times listed in that folder's timing.json.
 import { readFileSync, readdirSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
@@ -44,7 +45,22 @@ console.log(`\r${n}/${n} frames`);
 // poster frame from the flow scene
 writeFileSync(join(root, out, 'poster.png'), readFileSync(join(frames, `f${String(Math.round(12.2 * fps)).padStart(4, '0')}.png`)));
 const ff = 'ffmpeg';
-execFileSync(ff, ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', join(frames, 'f%04d.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', join(root, out, 'clawdbox-explainer.mp4')]);
+const silent = join(frames, 'silent.mp4');
+execFileSync(ff, ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', join(frames, 'f%04d.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', silent]);
+const voiceDir = args.voice ? join(root, args.voice) : null;
+if (voiceDir && existsSync(join(voiceDir, 'timing.json'))) {
+  // Lay each narration segment at its start time, mix, and mux with the video.
+  const timing = JSON.parse(readFileSync(join(voiceDir, 'timing.json'), 'utf8'));
+  const inputs = [], filters = [];
+  timing.segments.forEach((seg, i) => {
+    inputs.push('-i', join(voiceDir, seg.file));
+    filters.push(`[${i + 1}:a]adelay=${Math.round(seg.at * 1000)}|${Math.round(seg.at * 1000)},apad[a${i}]`);
+  });
+  const mix = `${filters.join(';')};${timing.segments.map((_, i) => `[a${i}]`).join('')}amix=inputs=${timing.segments.length}:normalize=0,atrim=0:${total},loudnorm=I=-16:TP=-1.5:LRA=11[aout]`;
+  execFileSync(ff, ['-y', '-loglevel', 'error', '-i', silent, ...inputs, '-filter_complex', mix, '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', join(root, out, 'clawdbox-explainer.mp4')]);
+} else {
+  writeFileSync(join(root, out, 'clawdbox-explainer.mp4'), readFileSync(silent));
+}
 execFileSync(ff, ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', join(frames, 'f%04d.png'), '-vf', `fps=15,scale=${gifWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5`, join(root, out, 'clawdbox-explainer.gif')]);
 rmSync(frames, { recursive: true, force: true });
 for (const f of ['clawdbox-explainer.mp4', 'clawdbox-explainer.gif', 'poster.png']) console.log(f, Math.round(readFileSync(join(root, out, f)).length / 1024), 'KB');

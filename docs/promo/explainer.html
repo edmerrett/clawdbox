@@ -65,24 +65,24 @@ function text(s, x, y, px, color = INK, align = 'left', mono = false, weight = 6
 }
 
 /* ---------- scenes ---------- */
-const T_TITLE = [0, 3.6], T_FLOW = [3.6, 16.4], T_GALLERY = [16.4, 21.0], T_END = [21.0, 25.0];
+const T_TITLE = [0, 4.5], T_FLOW = [4.5, 19.5], T_GALLERY = [19.5, 31.0], T_END = [31.0, 37.0];
 const TOTAL = T_END[1];
 
 function sceneTitle(t) {
-  const a = ease(span(t, 0, 0.6)) * (1 - ease(span(t, 3.1, 3.6)));
+  const a = ease(span(t, 0, 0.6)) * (1 - ease(span(t, 4.0, 4.5)));
   const rise = (1 - ease(span(t, 0, 0.9))) * 30;
   drawSprite('idle', t * 1000, 540 - 8 * 22, 300 - rise, 22, a);
   text('clawdbox', 540, 720 - rise, 112, INK, 'center', true, 700, a);
   text('A desk companion for Claude Code.', 540, 790 - rise, 38, MUTED, 'center', false, 500, a);
-  text('Clawd lives on a 16×16 LED panel and acts out what Claude is doing.', 540, 845 - rise, 26, MUTED, 'center', false, 400, a);
+  text('Clawd lives on a 16×16 LED panel and acts out what Claude is doing.', 540, 840 - rise, 26, MUTED, 'center', false, 400, a);
 }
 
 const EVENTS = [
-  { at: 4.6, line: 'Read  src/app.ts', state: 'reading', label: 'reading' },
-  { at: 7.0, line: 'Edit  src/app.ts', state: 'writing', label: 'writing' },
-  { at: 9.4, line: 'Bash  npm test', state: 'running', label: 'running' },
-  { at: 11.8, line: 'Allow git push?', state: 'needs-you', label: 'needs you' },
-  { at: 14.2, line: 'Done ✓', state: 'done', label: 'done' },
+  { at: 6.2, line: 'Read  src/app.ts', state: 'reading', label: 'reading' },
+  { at: 8.6, line: 'Edit  src/app.ts', state: 'writing', label: 'writing' },
+  { at: 11.0, line: 'Bash  npm test', state: 'running', label: 'running' },
+  { at: 13.4, line: 'Allow git push?', state: 'needs-you', label: 'needs you' },
+  { at: 16.2, line: 'Done ✓', state: 'done', label: 'done' },
 ];
 function sceneFlow(t) {
   const a = ease(span(t, T_FLOW[0], T_FLOW[0] + 0.5)) * (1 - ease(span(t, T_FLOW[1] - 0.5, T_FLOW[1])));
@@ -150,7 +150,7 @@ function sceneFlow(t) {
   // footer caption
   text('hooks → private socket → daemon → Bluetooth LE → LEDs', 540, 790, 22, MUTED, 'center', true, 500);
   const bullets = ['Switches about two seconds behind Claude, no flicker', 'Waves hello, celebrates long turns, cries on errors', 'Makes a coffee after ten idle minutes'];
-  bullets.forEach((b, i) => { const s = ease(span(t, 5 + i * 1.6, 5.6 + i * 1.6)); text('•  ' + b, 200, 860 + i * 46, 27, INK, 'left', false, 500, s); });
+  bullets.forEach((b, i) => { const s = ease(span(t, 8 + i * 2.2, 8.6 + i * 2.2)); text('•  ' + b, 200, 850 + i * 42, 25, INK, 'left', false, 500, s); });
   ctx.restore();
 }
 
@@ -158,16 +158,16 @@ const GALLERY = ['idle', 'thinking', 'reading', 'writing', 'running', 'needs-you
 function sceneGallery(t) {
   const a = ease(span(t, T_GALLERY[0], T_GALLERY[0] + 0.4)) * (1 - ease(span(t, T_GALLERY[1] - 0.4, T_GALLERY[1])));
   ctx.save(); ctx.globalAlpha = a;
-  text('Thirteen states, posed after the Claude Code stickers', 540, 120, 40, INK, 'center', false, 700);
-  const cols = 4, cell = 12, tile = 16 * cell, gapX = 40, gapY = 70;
-  const gridW = cols * tile + (cols - 1) * gapX, x0 = (W - gridW) / 2, y0 = 190;
+  text('Thirteen states, posed after the Claude Code stickers', 540, 110, 36, INK, 'center', false, 700);
+  const cols = 4, cell = 11, tile = 16 * cell, gapX = 44, gapY = 62;
+  const gridW = cols * tile + (cols - 1) * gapX, x0 = (W - gridW) / 2, y0 = 160;
   GALLERY.forEach((name, i) => {
-    const d = ease(span(t, T_GALLERY[0] + 0.2 + i * 0.12, T_GALLERY[0] + 0.6 + i * 0.12));
+    const d = ease(span(t, T_GALLERY[0] + 0.2 + i * 0.18, T_GALLERY[0] + 0.7 + i * 0.18));
     const gx = x0 + (i % cols) * (tile + gapX), gy = y0 + Math.floor(i / cols) * (tile + gapY) + (1 - d) * 20;
     ctx.save(); ctx.globalAlpha = d; rounded(gx - 10, gy - 10, tile + 20, tile + 20, 14, CARD);
-    drawSprite(name, t * 1000, gx, gy, cell); text(name, gx + tile / 2, gy + tile + 40, 20, MUTED, 'center', true, 500); ctx.restore();
+    drawSprite(name, t * 1000, gx, gy, cell); text(name, gx + tile / 2, gy + tile + 36, 19, MUTED, 'center', true, 500); ctx.restore();
   });
-  text('…plus ultrathink, a rainbow Clawd for the big questions.', 540, 1000, 24, MUTED, 'center', false, 400);
+  text('…plus ultrathink, a rainbow Clawd for the big questions.', 540, 925, 24, MUTED, 'center', false, 400);
   ctx.restore();
 }
 
@@ -179,8 +179,31 @@ function sceneEnd(t) {
   rounded(60, 646, 960, 76, 14, CARD, LINE);
   text('curl -fsSL https://raw.githubusercontent.com/edmerrett/clawdbox/main/install.sh | bash', 540, 693, 18.5, INK, 'center', true, 500);
   text('github.com/edmerrett/clawdbox', 540, 790, 34, ORANGE, 'center', true, 700);
-  text('Works with the Divoom TimeBox Evo · macOS · MIT', 540, 850, 22, MUTED, 'center', false, 400);
+  text('Works with the Divoom TimeBox Evo · macOS · MIT', 540, 840, 22, MUTED, 'center', false, 400);
   ctx.restore();
+}
+
+/* Burned-in captions, timed to the narration (feeds autoplay muted). */
+const CAPTIONS = [
+  [0.4, 4.2, 'Meet clawdbox: a desk companion for Claude Code.'],
+  [4.8, 9.0, 'Every time Claude reads a file, edits code, runs a command,'],
+  [9.0, 11.6, 'or needs you, a hook fires.'],
+  [11.6, 15.4, 'clawdbox turns those hooks into Clawd, animated live'],
+  [15.4, 19.2, 'on a 16×16 Divoom panel, over Bluetooth.'],
+  [19.8, 23.2, 'Thirteen states, straight from the Claude Code stickers.'],
+  [23.2, 25.6, 'A detective hat for reading.'],
+  [25.6, 28.0, 'A skateboard for shell commands.'],
+  [28.0, 30.8, 'A coffee when you have been away.'],
+  [31.3, 34.0, 'Open source. One command to install.'],
+  [34.0, 36.8, 'clawdbox, on GitHub.'],
+];
+function drawCaptions(t) {
+  const c = CAPTIONS.find(([a, b]) => t >= a && t < b); if (!c) return;
+  const [a, b, line] = c; const alpha = ease(span(t, a, a + 0.2)) * (1 - ease(span(t, b - 0.2, b)));
+  ctx.save(); ctx.globalAlpha = alpha; ctx.font = font(30, false, 600);
+  const w = ctx.measureText(line).width + 56, y = 1000;
+  rounded(540 - w / 2, y - 36, w, 56, 12, 'rgba(0,0,0,0.72)');
+  text(line, 540, y + 4, 30, '#ffffff', 'center', false, 600); ctx.restore();
 }
 
 function renderAt(t) {
@@ -189,6 +212,7 @@ function renderAt(t) {
   if (t >= T_FLOW[0] - 0.01 && t < T_FLOW[1]) sceneFlow(t);
   if (t >= T_GALLERY[0] - 0.01 && t < T_GALLERY[1]) sceneGallery(t);
   if (t >= T_END[0] - 0.01) sceneEnd(Math.min(t, TOTAL));
+  drawCaptions(t);
 }
 window.renderAt = renderAt; window.TOTAL = TOTAL;
 const HEADLESS = /*HEADLESS*/false/*END*/;

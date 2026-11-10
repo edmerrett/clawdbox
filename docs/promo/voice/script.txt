@@ -1,0 +1,4 @@
+Meet clawdbox: a desk companion for Claude Code.
+Every time Claude reads a file, edits code, runs a command, or needs you, a hook fires. clawdbox turns those hooks into Clawd, animated live on a sixteen by sixteen Divoom panel, over Bluetooth.
+Thirteen states, straight from the Claude Code stickers. A detective hat for reading. A skateboard for shell commands. A coffee when you have been away.
+Open source. One command to install. clawdbox, on GitHub.

@@ -1,0 +1,9 @@
+{
+  "voice": "Piper en_GB-alan-medium",
+  "segments": [
+    { "file": "seg0.m4a", "at": 0.4 },
+    { "file": "seg1.m4a", "at": 4.8 },
+    { "file": "seg2.m4a", "at": 19.8 },
+    { "file": "seg3.m4a", "at": 31.3 }
+  ]
+}
