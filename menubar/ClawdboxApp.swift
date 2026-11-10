@@ -61,6 +61,13 @@ func installedCheckout() -> URL? {
 
 let daemonBase = URL(string: ProcessInfo.processInfo.environment["CLAWDBOX_URL"] ?? "http://127.0.0.1:7676")!
 
+/// CLAWDBOX_PANEL_LOG=1 logs every frame the digital Divoom draws to stderr (CI reads it to
+/// confirm the open menu really animates).
+let panelLog = ProcessInfo.processInfo.environment["CLAWDBOX_PANEL_LOG"] != nil
+func logPanel(_ line: String) {
+    if panelLog { FileHandle.standardError.write((line + "\n").data(using: .utf8)!) }
+}
+
 /// What the menu bar shows for a given daemon state. Shared by the live UI and `--check`,
 /// so the headless check exercises exactly the rendering the user sees.
 struct Rendering {
@@ -373,6 +380,7 @@ final class PanelView: NSView {
         NSBezierPath(roundedRect: screen, xRadius: 4, yRadius: 4).fill()
 
         let f = frames
+        logPanel("panel draw: state=\(state) frame=\(f.isEmpty ? 0 : index % f.count) of=\(f.count) inMenu=\(window != nil)")
         let pixels: [UInt32]? = f.isEmpty ? nil : f[index % f.count].pixels
         let off = NSColor(white: 0.09, alpha: 1)
         let alpha: CGFloat = dimmed ? 0.4 : 1
@@ -451,6 +459,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = buildMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
+        // `--open-menu`: click our own icon shortly after launch (CI uses it to exercise the open menu).
+        if CommandLine.arguments.contains("--open-menu") {
+            Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
+                self?.statusItem.button?.performClick(nil)
+            }
+        }
     }
 
     private func buildMenu() -> NSMenu {
@@ -520,6 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: menu open/close: the digital Divoom animates, and follows the daemon closely, only while visible
 
     func menuWillOpen(_ menu: NSMenu) {
+        logPanel("menu opened")
         panel.play()
         refresh()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.refresh() }

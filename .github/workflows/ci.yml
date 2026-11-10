@@ -80,8 +80,9 @@ jobs:
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           echo "--- launch the real menu bar app and read its status item"
-          open menubar/build/Clawdbox.app || (menubar/build/Clawdbox.app/Contents/MacOS/Clawdbox >/dev/null 2>&1 &)
-          sleep 5
+          # --open-menu clicks the icon; CLAWDBOX_PANEL_LOG logs each frame the digital Divoom draws.
+          CLAWDBOX_PANEL_LOG=1 "$APP" --no-daemon --open-menu >/dev/null 2>panel.log &
+          sleep 8
           pgrep -x Clawdbox >/dev/null && echo "Clawdbox is running as a GUI app"
           # Read the live NSStatusItem title through the accessibility tree (may need permission on some runners).
           osascript -e 'tell application "System Events" to tell process "Clawdbox" to get value of attribute "AXTitle" of menu bar item 1 of menu bar 2' > statusitem.txt 2>&1 || true
@@ -92,7 +93,22 @@ jobs:
           sips -g pixelWidth -g pixelHeight shots/menubar-full.png | tail -2
           W=$(sips -g pixelWidth shots/menubar-full.png | awk '/pixelWidth/{print $2}')
           sips -c 80 900 --cropOffset 0 $((W-900)) shots/menubar-full.png --out shots/menubar-right.png >/dev/null
+          sips -c 700 900 --cropOffset 0 $((W-900)) shots/menubar-full.png --out shots/menu-open-reading.png >/dev/null
+          echo "--- change state while the menu is open"
+          curl -sf -X POST http://127.0.0.1:7676/show/writing >/dev/null
+          sleep 4
+          screencapture -x shots/menu-open-writing-full.png
+          sips -c 700 900 --cropOffset 0 $((W-900)) shots/menu-open-writing-full.png --out shots/menu-open-writing.png >/dev/null
           pkill -x Clawdbox || true
+          echo "--- what the digital Divoom drew"; sort panel.log | uniq -c
+          grep -q '^menu opened' panel.log
+          # the open menu played several frames of the reading loop, then followed the daemon to writing
+          test "$(grep 'state=reading .*inMenu=true' panel.log | sort -u | wc -l)" -ge 2
+          test "$(grep 'state=writing .*inMenu=true' panel.log | sort -u | wc -l)" -ge 2
+          echo "--- snapshots (base64)"
+          echo "BEGIN digital-divoom.png"; base64 -i shots/digital-divoom.png; echo "END digital-divoom.png"
+          sips -Z 450 -s format jpeg -s formatOptions 35 shots/menu-open-writing.png --out shots/menu-open-writing-small.jpg >/dev/null
+          echo "BEGIN menu-open-writing-small.jpg"; base64 -i shots/menu-open-writing-small.jpg; echo "END menu-open-writing-small.jpg"
           kill %1; sleep 1
           echo "--- daemon down"
           set +e; "$APP" --check > check3.txt; rc=$?; set -e
@@ -107,3 +123,4 @@ jobs:
             shots/
             statusitem.txt
             check*.txt
+            panel.log
