@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
 ### Security
 - Updates are signature-checked. `scripts/update.sh` (the six-hourly updater and Install Update…) installs a release
