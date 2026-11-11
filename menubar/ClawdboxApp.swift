@@ -26,6 +26,8 @@ struct DaemonState: Decodable {
     struct Update: Decodable {
         let version: String
         let commit: String?
+        /// Newest release on origin, without the "v" (older daemons do not send this).
+        let latestVersion: String?
         let latestCommit: String?
         let updateAvailable: Bool
         let error: String?
@@ -80,17 +82,22 @@ struct Rendering {
     let showing: String
     let transport: String
     let sessions: String
-    /// Non-nil when the daemon reports a newer clawdbox on origin/main.
+    /// "Clawdbox 0.4.0": the version the daemon is running.
+    let version: String?
+    /// Non-nil when the daemon reports a newer clawdbox release.
     let update: String?
 
     static func offline() -> Rendering {
         Rendering(title: " offline", dimmed: true, connection: "Daemon not running",
-                  showing: "Use Restart Daemon below, or re-run the installer", transport: "", sessions: "", update: nil)
+                  showing: "Use Restart Daemon below, or re-run the installer", transport: "", sessions: "",
+                  version: nil, update: nil)
     }
 
-    init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String, update: String?) {
+    init(title: String, dimmed: Bool, connection: String, showing: String, transport: String, sessions: String,
+         version: String?, update: String?) {
         self.title = title; self.dimmed = dimmed; self.connection = connection
-        self.showing = showing; self.transport = transport; self.sessions = sessions; self.update = update
+        self.showing = showing; self.transport = transport; self.sessions = sessions
+        self.version = version; self.update = update
     }
 
     init(_ s: DaemonState) {
@@ -106,14 +113,18 @@ struct Rendering {
         transport = "Transport: \(s.transport ?? s.device.label)"
         let n = s.sessions.count
         sessions = "\(n) Claude session\(n == 1 ? "" : "s") · up \(s.uptimeSec / 60) min"
+        version = s.update.map { "Clawdbox \($0.version)" }
         if let u = s.update, u.updateAvailable {
-            let from = u.commit.map { String($0.prefix(7)) } ?? "?"
-            let to = u.latestCommit.map { String($0.prefix(7)) } ?? "?"
-            update = "Update available: \(from) → \(to)"
+            update = "Update available: \(u.version) → \(newestRelease(u))"
         } else {
             update = nil
         }
     }
+}
+
+/// The newest release as people know it: its version, else its short commit.
+func newestRelease(_ u: DaemonState.Update) -> String {
+    u.latestVersion ?? u.latestCommit.map { String($0.prefix(7)) } ?? "a newer release"
 }
 
 /// GET a daemon path once, synchronously. Used by `--check` and `--snapshot`.
@@ -179,6 +190,7 @@ let allStates = ["idle", "thinking", "ultrathink", "reading", "writing", "runnin
 let launchdLabel = "com.clawdbox.daemon"
 let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/clawdbox")
 let logsDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
+let updateLog = logsDir.appendingPathComponent("update.log")
 
 // MARK: - Daemon supervisor
 
@@ -444,15 +456,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let showingItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let transportItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let sessionsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let versionItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let installUpdateItem = NSMenuItem(title: "Install Update…", action: #selector(installUpdate), keyEquivalent: "u")
     private let checkUpdatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
     private let forceMenu = NSMenu()
     private let releaseItem = NSMenuItem(title: "Release (follow hooks)", action: #selector(releaseForce), keyEquivalent: "")
-    /// The outcome of a manual "Check for Updates…", shown until the menu has been seen with it.
+    /// A one-off update line ("Checking…", "Updated to 0.4.0"), shown until the menu has been seen with it.
     private var updateNote: String?
     private var updateNoteSeen = false
     private var checkingUpdates = false
+    /// scripts/update.sh while it runs (it restarts the daemon, and usually this app, at the end).
+    private var installing: Process?
     private var supervisor: DaemonSupervisor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -484,7 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelItem.view = panel
         menu.addItem(panelItem)
         menu.addItem(.separator())
-        for item in [connectionItem, showingItem, transportItem, sessionsItem, updateItem] {
+        for item in [connectionItem, showingItem, transportItem, sessionsItem, versionItem, updateItem] {
             item.isEnabled = false
             menu.addItem(item)
         }
@@ -595,6 +610,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let data = data, error == nil, let state = try? JSONDecoder().decode(DaemonState.self, from: data) {
                     self.reachable = true
                     self.lastState = state
+                    self.noticeVersion(state)
                     self.loadAnimsIfNeeded(uptime: state.uptimeSec)
                     self.animsUptime = state.uptimeSec
                 } else {
@@ -609,16 +625,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let r: Rendering
         if reachable, let s = lastState { r = Rendering(s) } else { r = Rendering.offline() }
         statusItem.button?.image = clawdIcon(dimmed: r.dimmed)
-        statusItem.button?.title = r.title
+        statusItem.button?.title = installing != nil ? " updating…" : r.title
         configure(panel, state: reachable ? lastState : nil)
         connectionItem.title = r.connection
         showingItem.title = r.showing
         transportItem.title = r.transport
         sessionsItem.title = r.sessions
-        let updateLine = r.update ?? updateNote
-        updateItem.title = updateLine ?? ""
-        updateItem.isHidden = updateLine == nil
-        installUpdateItem.isHidden = r.update == nil || installedCheckout() == nil
+        versionItem.title = r.version ?? ""
+        versionItem.isHidden = r.version == nil
+        if installing != nil {
+            updateItem.title = "Installing update… (log: ~/Library/Logs/clawdbox/update.log)"
+            updateItem.isHidden = false
+            installUpdateItem.isHidden = true
+        } else {
+            let updateLine = r.update ?? updateNote
+            updateItem.title = updateLine ?? ""
+            updateItem.isHidden = updateLine == nil
+            installUpdateItem.isHidden = r.update == nil || installedCheckout() == nil
+        }
+        checkUpdatesItem.isEnabled = installing == nil && !checkingUpdates
 
         // Force State: tick the held state; Release only when something is forced.
         let forced = reachable ? lastState?.forced : nil
@@ -664,9 +689,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }.resume()
     }
 
-    /// Ask the daemon to look for a newer release now instead of at its next 6-hourly check.
+    /// Ask the daemon to look for a newer release now instead of at its next 6-hourly check,
+    /// and say what it found in a dialog (the menu has closed by the time the answer arrives).
     @objc private func checkForUpdates() {
-        guard !checkingUpdates else { return }
+        guard !checkingUpdates, installing == nil else { return }
         checkingUpdates = true
         updateNote = "Checking for updates…"
         updateNoteSeen = false
@@ -679,20 +705,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.checkingUpdates = false
-                if let info = info {
-                    if info.updateAvailable {
-                        self.updateNote = nil  // the regular "Update available" line takes over
-                    } else if let err = info.error {
-                        self.updateNote = "Update check failed: \(err)"
-                    } else {
-                        self.updateNote = "Clawdbox is up to date (\(info.version))"
-                    }
-                } else {
-                    self.updateNote = "Update check failed: " + (error?.localizedDescription ?? "daemon not running")
-                }
+                self.updateNote = nil
                 self.refresh()
+                guard let info = info else {
+                    self.alert("Couldn't check for updates",
+                               error?.localizedDescription ?? "The daemon is not running. Use Restart Daemon, then try again.")
+                    return
+                }
+                if info.updateAvailable {
+                    self.offerUpdate(info)
+                } else if let err = info.error {
+                    self.alert("Couldn't check for updates", err)
+                } else {
+                    self.alert("Clawdbox is up to date", "You have \(info.version), the newest release.")
+                }
             }
         }.resume()
+    }
+
+    private func offerUpdate(_ info: DaemonState.Update) {
+        let title = "Clawdbox \(newestRelease(info)) is available"
+        guard installedCheckout() != nil else {
+            alert(title, "You have \(info.version). This install is not a git checkout set up by install-launchd, "
+                + "so update it from Terminal with: clawdbox update")
+            return
+        }
+        let answer = alert(title, "You have \(info.version). Installing takes about a minute; Clawdbox restarts "
+                           + "when it is done and tells you the new version.", buttons: ["Install Now", "Later"])
+        if answer == .alertFirstButtonReturn { installUpdate() }
+    }
+
+    @discardableResult
+    private func alert(_ title: String, _ text: String, buttons: [String] = ["OK"]) -> NSApplication.ModalResponse {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        for b in buttons { a.addButton(withTitle: b) }
+        NSApp.activate(ignoringOtherApps: true)  // a menu bar app is never frontmost on its own
+        return a.runModal()
+    }
+
+    /// When the daemon comes back on a different version (after Install Update…, or after the
+    /// background updater ran), say so: a dialog if the user asked for the update, else a menu line.
+    private func noticeVersion(_ state: DaemonState) {
+        guard let version = state.update?.version else { return }
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: "lastSeenVersion")
+        defaults.set(version, forKey: "lastSeenVersion")
+        let requestedAt = defaults.double(forKey: "updateRequestedAt")
+        let requested = requestedAt > 0 && Date().timeIntervalSince1970 - requestedAt < 15 * 60
+        if requestedAt > 0 && !requested { defaults.removeObject(forKey: "updateRequestedAt") }
+        guard let was = previous, was != version else { return }
+        updateNote = "Updated to \(version) (was \(was))"
+        updateNoteSeen = false
+        guard requested else { return }
+        defaults.removeObject(forKey: "updateRequestedAt")
+        installing = nil
+        let answer = alert("Clawdbox updated to \(version)", "You were on \(was).", buttons: ["OK", "What's New"])
+        if answer == .alertSecondButtonReturn,
+           let url = URL(string: "https://github.com/edmerrett/clawdbox/releases/tag/v\(version)") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func restartDaemon() {
@@ -709,23 +782,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Runs scripts/update.sh in the installed checkout (located via our own launchd plist,
     /// never via the daemon). It updates to the newest release, rebuilds, restarts the
-    /// daemon and relaunches this app if the menu bar sources changed.
+    /// daemon and relaunches this app if the menu bar sources changed. Progress shows in the
+    /// menu and the status item; noticeVersion reports the new version once it is running.
     @objc private func installUpdate() {
-        guard let root = installedCheckout() else { return }
+        guard installing == nil, let root = installedCheckout() else { return }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = [root.appendingPathComponent("scripts/update.sh").path]
         try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
-        let log = logsDir.appendingPathComponent("update.log")
-        if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
-        if let handle = try? FileHandle(forWritingTo: log) {
+        if !FileManager.default.fileExists(atPath: updateLog.path) {
+            FileManager.default.createFile(atPath: updateLog.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: updateLog) {
             handle.seekToEndOfFile()
             task.standardOutput = handle
             task.standardError = handle
         }
-        updateItem.title = "Updating… (see ~/Library/Logs/clawdbox/update.log)"
-        installUpdateItem.isHidden = true
-        try? task.run()
+        task.terminationHandler = { [weak self] t in
+            DispatchQueue.main.async { self?.installFinished(t.terminationStatus) }
+        }
+        // survives this app being restarted by the update, so the result can still be reported
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "updateRequestedAt")
+        do {
+            try task.run()
+            installing = task
+        } catch {
+            UserDefaults.standard.removeObject(forKey: "updateRequestedAt")
+            alert("Couldn't start the update", error.localizedDescription)
+        }
+        render()
+    }
+
+    /// Only reached when the update did not restart this app.
+    private func installFinished(_ status: Int32) {
+        guard installing != nil else { return }
+        installing = nil
+        if status == 0 {
+            updateNote = "Update installed; waiting for the daemon to restart…"
+            updateNoteSeen = false
+        } else {
+            UserDefaults.standard.removeObject(forKey: "updateRequestedAt")
+            let answer = alert("Update failed", "Clawdbox stays on the version it had. The update log says why.",
+                               buttons: ["Open Update Log", "OK"])
+            if answer == .alertFirstButtonReturn { NSWorkspace.shared.open(updateLog) }
+        }
+        render()
     }
 
     @objc private func showLogs() {
@@ -745,6 +846,7 @@ if CommandLine.arguments.contains("--check") {
         print(r.connection)
         print(r.showing)
         print(r.sessions)
+        if let v = r.version { print(v) }
         if let u = r.update { print(u) }
         // The digital Divoom: the sprites it plays, and optionally a PNG of it (`--snapshot <file>`).
         var anims: [String: [PanelFrame]] = [:]

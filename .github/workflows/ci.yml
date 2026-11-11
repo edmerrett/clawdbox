@@ -69,6 +69,7 @@ jobs:
           grep -q '^transport: mock' check1.txt
           grep -q '^title: idle' check1.txt
           grep -q '^anims: 13 (idle: [1-9]' check1.txt
+          grep -q '^Clawdbox [0-9]' check1.txt
           curl -sf -X POST http://127.0.0.1:7676/show/reading >/dev/null
           sleep 2
           mkdir -p shots

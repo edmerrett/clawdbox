@@ -9,6 +9,8 @@ import { execFile } from 'node:child_process';
 export interface UpdateInfo {
   version: string;
   commit: string | null;
+  /** Version of the newest release tag on origin (without the "v"), when known. */
+  latestVersion: string | null;
   latestCommit: string | null;
   updateAvailable: boolean;
   checkedAt: number | null;
@@ -21,8 +23,8 @@ function run(cmd: string, args: string[], cwd: string, timeoutMs = 20_000): Prom
   });
 }
 
-/** Commit of the newest v* tag on origin (what `clawdbox update` installs), or null when there is none. */
-export async function latestReleaseCommit(repoRoot: string): Promise<string | null> {
+/** The newest v* tag on origin (what `clawdbox update` installs), or null when there is none. */
+export async function latestRelease(repoRoot: string): Promise<{ version: string; commit: string } | null> {
   const out = await run('git', ['ls-remote', '--tags', '--refs', 'origin', 'refs/tags/v*'], repoRoot);
   const tags = out
     .split('\n')
@@ -36,7 +38,7 @@ export async function latestReleaseCommit(repoRoot: string): Promise<string | nu
   if (!tags.length) return null;
   // annotated tags point at a tag object; resolve to the commit with ^{}
   const peeled = await run('git', ['ls-remote', 'origin', `refs/tags/v${tags[0].version}^{}`], repoRoot).catch(() => '');
-  return (peeled.split(/\s+/)[0] || tags[0].sha) ?? null;
+  return { version: tags[0].version, commit: peeled.split(/\s+/)[0] || tags[0].sha };
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -64,7 +66,7 @@ export class UpdateChecker {
     version: string,
     private readonly log: (m: string) => void = () => {},
   ) {
-    this.info = { version, commit: null, latestCommit: null, updateAvailable: false, checkedAt: null, error: null };
+    this.info = { version, commit: null, latestVersion: null, latestCommit: null, updateAvailable: false, checkedAt: null, error: null };
   }
 
   start(intervalMs: number): void {
@@ -88,7 +90,8 @@ export class UpdateChecker {
     this.running = true;
     try {
       const commit = await run('git', ['rev-parse', 'HEAD'], this.repoRoot);
-      const latest = await latestReleaseCommit(this.repoRoot);
+      const release = await latestRelease(this.repoRoot);
+      const latest = release?.commit ?? null;
       let available = false;
       if (latest && latest !== commit) {
         // fetch just that commit so ancestry can be tested without moving anything
@@ -96,9 +99,17 @@ export class UpdateChecker {
         available = !(await isAncestor(latest, 'HEAD', this.repoRoot));
       }
       if (available && !this.info.updateAvailable && latest) {
-        this.log(`update available: ${commit.slice(0, 7)} -> ${latest.slice(0, 7)} (run: clawdbox update)`);
+        this.log(`update available: ${this.info.version} -> ${release?.version} (${latest.slice(0, 7)}; run: clawdbox update)`);
       }
-      this.info = { ...this.info, commit, latestCommit: latest, updateAvailable: available, checkedAt: Date.now(), error: null };
+      this.info = {
+        ...this.info,
+        commit,
+        latestVersion: release?.version ?? null,
+        latestCommit: latest,
+        updateAvailable: available,
+        checkedAt: Date.now(),
+        error: null,
+      };
     } catch (e) {
       this.info = { ...this.info, checkedAt: Date.now(), error: (e as Error).message.split('\n')[0] };
     } finally {
