@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
 
 ### Changed
 - Updates you can see. The menu shows the installed version. Check for Updates… answers in a dialog (up to date, or
