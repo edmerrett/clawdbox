@@ -106,6 +106,16 @@ if [ -x "$HOME/Applications/Clawdbox.app/Contents/MacOS/Clawdbox" ] && xcrun -f 
   say "rebuilding Clawdbox.app"
   menubar/install.sh || say "Clawdbox.app rebuild failed; the old one keeps running"
 fi
+# Installs from before 0.4.4: tie the launch agents to Clawdbox.app by bundle id, so macOS stops
+# announcing "Clawdbox can run in the background" at every login (takes effect at next login).
+for plist in "$HOME/Library/LaunchAgents/com.clawdbox.daemon.plist" "$HOME/Library/LaunchAgents/com.clawdbox.update.plist"; do
+  [ -f "$plist" ] || continue
+  /usr/libexec/PlistBuddy -c "Print :AssociatedBundleIdentifiers" "$plist" >/dev/null 2>&1 && continue
+  if /usr/libexec/PlistBuddy -c "Add :AssociatedBundleIdentifiers array" \
+       -c "Add :AssociatedBundleIdentifiers:0 string com.clawdbox.app" "$plist" >/dev/null 2>&1; then
+    say "tied $(basename "$plist") to Clawdbox.app (AssociatedBundleIdentifiers)"
+  fi
+done
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   say "restarting the daemon"
   launchctl kickstart -k "gui/$(id -u)/$LABEL"

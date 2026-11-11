@@ -43,3 +43,11 @@ test('updater plist runs the update script on an interval and logs', async () =>
   assert.match(plist, /<key>StartInterval<\/key>\s*<integer>21600<\/integer>/);
   assert.match(plist, /update\.log/);
 });
+
+test('both agents name the Clawdbox app so macOS stops re-announcing them as background activity', async () => {
+  const { updaterPlist, agentBundleIds } = await import('../src/tools/install.js');
+  const ids = /<key>AssociatedBundleIdentifiers<\/key>\s*<array>\s*<string>com\.clawdbox\.app<\/string>\s*<\/array>/;
+  assert.match(launchdPlist({ launcher: '/a', logDir: '/l', cwd: '/x', bundleIds: agentBundleIds(true) }), ids);
+  assert.match(updaterPlist({ script: '/s', logDir: '/l', cwd: '/x', intervalSec: 60, bundleIds: agentBundleIds(true) }), ids);
+  assert.deepEqual(agentBundleIds(false), ['com.clawdbox.app', 'com.clawdbox.daemon']);
+});

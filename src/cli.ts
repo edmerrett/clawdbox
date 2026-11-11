@@ -5,7 +5,7 @@
  * agent's argv, and `makeDisplay()` for the one-shot `send`/`diag` commands.
  */
 import { parseArgs, ParseArgsConfig } from 'node:util';
-import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
@@ -18,6 +18,7 @@ import {
   launchdPlist,
   launchdPlistPath,
   LAUNCHD_LABEL,
+  agentBundleIds,
   settingsPath,
   appBundleFiles,
   appBundlePath,
@@ -281,6 +282,12 @@ function cmdInstallHooks(v: Flags, cfg: DaemonConfig): void {
   console.log('Claude Code picks up settings changes automatically; if an open session stays quiet, restart it.');
 }
 
+/** macOS re-announces a launch agent as new background activity when its plist changes; leave identical ones alone. */
+function writeIfChanged(path: string, content: string): void {
+  if (existsSync(path) && readFileSync(path, 'utf8') === content) return;
+  writeFileSync(path, content);
+}
+
 function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   if (!cfg.mac && !cfg.ble && !cfg.serial && !cfg.mock) throw new UsageError('--ble, --mac, --serial or --mock is required');
   if (process.platform !== 'darwin') throw new UsageError('install-launchd is macOS only');
@@ -293,8 +300,10 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   // 1. Something with Bluetooth permission must own the daemon. Preferred: Clawdbox.app (the
   //    menu bar app) hosts it as a child. Fallback when the app was not built: a wrapper bundle.
   const appDir = appBundlePath();
+  const hosting = isHostingApp(appDir);
+  const bundleIds = agentBundleIds(hosting);
   let launcher: string;
-  if (isHostingApp(appDir)) {
+  if (hosting) {
     writeDaemonConfig({ node: process.execPath, cli, args, cwd: repoRoot() });
     launcher = hostingAppBinary();
     console.log(`daemon host:   ${appDir} (menu bar app; config in ${daemonConfigPath()})`);
@@ -311,7 +320,7 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   // 2. launchd agent that keeps it running
   const path = launchdPlistPath();
   mkdirSync(join(path, '..'), { recursive: true });
-  writeFileSync(path, launchdPlist({ launcher, logDir: logs, cwd: repoRoot() }));
+  writeIfChanged(path, launchdPlist({ launcher, logDir: logs, cwd: repoRoot(), bundleIds }));
   const domain = launchdDomain();
   launchctl(['bootout', `${domain}/${LAUNCHD_LABEL}`], true);
   if (!launchctl(['bootstrap', domain, path]))
@@ -320,13 +329,14 @@ function cmdInstallLaunchd(v: Flags, cfg: DaemonConfig): void {
   // 3. updater agent (on by default; follows release tags, --no-auto-update to skip)
   if (!v['no-auto-update']) {
     const upath = updaterPlistPath();
-    writeFileSync(
+    writeIfChanged(
       upath,
       updaterPlist({
         script: join(repoRoot(), 'scripts', 'update.sh'),
         logDir: logs,
         cwd: repoRoot(),
         intervalSec: UPDATE_INTERVAL_MS / 1000,
+        bundleIds,
       }),
     );
     launchctl(['bootout', `${domain}/${UPDATER_LABEL}`], true);

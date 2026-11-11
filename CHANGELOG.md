@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4
+
+### Fixed
+- macOS no longer announces "“Clawdbox” can run in the background" at every login. Both launch agents now carry
+  `AssociatedBundleIdentifiers` (`com.clawdbox.app`), so Background Task Management ties them to Clawdbox.app by
+  bundle id instead of by the ad-hoc signature that changes with every build. `install-launchd` leaves an unchanged
+  plist alone instead of rewriting it, and the updater adds the key to agents installed by earlier versions (it takes
+  effect at the next login). If the notice still shows after that, stale entries from earlier installs are left in
+  the Login Items database: `sfltool resetbtm`, then restart.
+
 ## 0.4.3
 
 ### Removed
