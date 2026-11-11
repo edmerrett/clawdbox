@@ -169,6 +169,13 @@ export class BleDisplay implements Display {
         else if (wasDrop) this.onReconnect?.();
         break;
       }
+      case 'disconnected':
+        // the bridge lost the panel (powered off, out of range) and is reconnecting
+        if (this.connected) this.log(`bridge lost the panel: ${ev.message ?? 'link dropped'}`);
+        this.connected = false;
+        this.preloaded = false;
+        this.lastError = ev.message ?? 'link dropped';
+        break;
       case 'error':
         if (!ev.re) {
           // status (connect retry etc.), not a reply

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/promo/clawdbox-explainer.gif" alt="How clawdbox works, animated" width="640">
+  <img src="docs/sprites/all-states.gif" alt="Clawd in every state" width="720">
 </p>
 
 <h1 align="center">clawdbox</h1>

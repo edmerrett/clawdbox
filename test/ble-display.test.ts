@@ -47,3 +47,26 @@ test('a show queued before the bridge connects waits for the connection', async 
   const shownAt = logs.findIndex((l) => l.includes('showing idle'));
   assert.ok(connectedAt >= 0 && shownAt > connectedAt, 'connected must be logged before showing');
 });
+
+test('a panel that drops while idle is reported disconnected, then re-shown when it is back', async (t) => {
+  const { d, logs } = make({ FAKE_DROP_AFTER: '150', FAKE_BACK_AFTER: '300' });
+  t.after(() => d.close());
+  let reshown = 0;
+  d.onReconnect = () => reshown++;
+  await d.ensureConnected();
+  assert.ok(d.connected);
+  await waitUntil(() => !d.connected);
+  assert.match(d.lastError ?? '', /panel off/);
+  assert.ok(logs.some((l) => l.includes('bridge lost the panel')));
+  await waitUntil(() => d.connected);
+  assert.equal(reshown, 1);
+  assert.equal(d.lastError, null);
+});
+
+async function waitUntil(cond: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error('condition not met in time');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}

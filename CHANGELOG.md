@@ -11,6 +11,16 @@
   `clawdbox show <state> --hold` and `clawdbox release`; `/state` reports `held`. A plain `/show/<state>` (the
   previewer, `clawdbox show`) still lasts until the next hook event.
 
+### Fixed
+- A panel switched off (or out of range) while idle was still shown as connected in the menu bar. The BLE bridge now
+  checks the link every 3 s, reports `disconnected` to the daemon and reconnects; Clawd is put back when the panel
+  returns. With `--serial`, a device that hangs up now closes the link instead of being read forever, and Classic
+  links reconnect straight away rather than at the next hook event.
+
+### Removed
+- The animated explainer video and its tooling (`docs/promo`, `scripts/render-promo.mjs`, `scripts/make-voice.sh`)
+  and the unused `assets/icon-preview.png`. The README hero is now the all-states sprite GIF.
+
 ## 0.3.0
 
 ### Added

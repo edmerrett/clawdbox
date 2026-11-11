@@ -52,6 +52,8 @@ export class Device implements Display {
       if (this.closed) return; // we hung up on purpose
       this.lastError = err?.message ?? 'link closed';
       this.log(`link closed${err ? `: ${err.message}` : ''}; will reconnect`);
+      // reconnect now rather than at the next hook event; onReconnect puts Clawd back
+      void this.ensureConnected().catch(() => {});
     });
   }
 

@@ -196,6 +196,9 @@ export class RfcommLink extends EventEmitter implements Link {
  * for a paired SPP device; Linux can bind one with `rfcomm bind`). When macOS already
  * holds the Evo's SPP channel this is the only way in, and it needs no native module.
  */
+/** Consecutive empty reads (50 ms apart) that mean the serial device has gone away. */
+export const SERIAL_HANGUP_READS = 20;
+
 export class SerialLink extends EventEmitter implements Link {
   private fh: import('node:fs/promises').FileHandle | null = null;
   open = false;
@@ -229,11 +232,18 @@ export class SerialLink extends EventEmitter implements Link {
     const fh = this.fh;
     if (!fh) return;
     const buf = Buffer.alloc(1024);
+    // In raw mode a read blocks until a byte arrives, so a run of empty reads is the
+    // device hanging up (box powered off), not silence. One stray empty read is tolerated.
+    let empty = 0;
     try {
       while (this.open && this.fh === fh) {
         const { bytesRead } = await fh.read(buf, 0, buf.length, null);
-        if (bytesRead > 0) this.emit('data', Buffer.from(buf.subarray(0, bytesRead)));
-        else if (bytesRead === 0) await new Promise((r) => setTimeout(r, 50));
+        if (bytesRead > 0) {
+          empty = 0;
+          this.emit('data', Buffer.from(buf.subarray(0, bytesRead)));
+        } else if (++empty >= SERIAL_HANGUP_READS) {
+          throw new Error('serial device hung up');
+        } else await new Promise((r) => setTimeout(r, 50));
       }
     } catch (e) {
       if (this.open) {
