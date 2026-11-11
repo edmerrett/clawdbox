@@ -39,6 +39,13 @@ pose. `npm test` enforces the frame-time rule.
 Open an issue with: the Bluetooth name(s) it advertises, whether it pairs as a speaker, and the output of
 `node dist/cli.js diag --mac <addr>` and `node dist/cli.js ble-scan`.
 
+## Releasing
+Bump `version` in `package.json` and turn `## Unreleased` in CHANGELOG.md into `## <version>`, merge, then push a
+**signed** annotated tag on `main`: `git tag -s v<version> -m "clawdbox <version>" && git push origin v<version>`.
+Installs refuse a tag that is not signed by a key in `scripts/release-signers` (`scripts/verify-release.sh
+scripts/release-signers v<version>` checks one), so set `git config tag.gpgSign true` to never forget `-s`. Pushing
+the tag runs the release workflow.
+
 ## Pull requests
 Keep them focused. CI runs lint, format check, tests and a mock run on macOS and Linux, plus a ruff check of the
 bridge and a Swift build of the menu bar app.

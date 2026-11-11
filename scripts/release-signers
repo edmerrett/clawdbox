@@ -1,0 +1,5 @@
+# Keys allowed to sign clawdbox release tags (ssh-keygen "allowed signers" format).
+# scripts/update.sh refuses to install a v* tag unless it is an annotated tag signed by one of these.
+# The file is read from the installed checkout, so a new tag cannot vouch for itself: to rotate keys,
+# add the new key here in a release signed by the old one, and remove the old key a release later.
+clawdbox-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE/uVw1XkC9eJa7DRFlMRhulspbvCY5hJOH7oVxet/RV
