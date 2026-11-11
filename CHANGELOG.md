@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Updates you can see. The menu shows the installed version. Check for Updates… answers in a dialog (up to date, or
+  the new version with Install Now) instead of a menu line you only saw by reopening the menu. While an
+  update installs the menu bar reads "updating…"; when the new version is running a dialog says so (with What's New),
+  and a failed update offers its log. Updates the background updater installs show as "Updated to … (was …)" in the
+  menu. "Update available" names versions rather than commits; the daemon's update info gains `latestVersion`.
+
 ## 0.4.0
 
 ### Added

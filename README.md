@@ -58,7 +58,7 @@ to start at login with automatic release updates, and waits for Clawd to appear 
 Click it and the menu opens on a small digital Divoom: the same 16×16 sprites, playing whatever the real panel is
 showing and switching as Claude does. Handy when the box is across the room, or not plugged in at all.
 
-Below it: connection, transport and session count, then **Open Previewer**, **Force State** (try any of the
+Below it: connection, transport, session count and the installed version, then **Check for Updates…**, **Open Previewer**, **Force State** (try any of the
 thirteen), **Restart Daemon**, **Show Logs** and, when a new release is out, **Install Update…**.
 
 <br clear="right">

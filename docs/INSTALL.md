@@ -40,7 +40,10 @@ One app does three jobs: it sits in the menu bar (Clawd silhouette plus the curr
 disconnected), it hosts the node daemon as a child process so the daemon inherits its Bluetooth permission, and it
 restarts the daemon if it dies. Click it and the menu opens on a small digital Divoom playing whatever the panel is
 showing, live. Below that the menu offers Check for Updates, Open Previewer, Force State, Restart Daemon, Show Logs
-and, when a newer release exists, Install Update. A state picked under Force State is held (ticked) whatever the hooks
+and, when a newer release exists, Install Update. The menu shows the installed version (`Clawdbox 0.4.0`). Check for
+Updates answers in a dialog (up to date, or the new version with Install Now); while an update installs the menu bar
+reads "updating…", and once the new version is running a dialog says so. Updates the six-hourly updater installs on
+its own show as "Updated to … (was …)" in the menu. The update log is `~/Library/Logs/clawdbox/update.log`. A state picked under Force State is held (ticked) whatever the hooks
 say, until you pick Release or the same state again. Quit stops the daemon too, until the next login.
 `~/Applications/Clawdbox.app/Contents/MacOS/Clawdbox --check` prints what the menu bar would show. Without the Xcode
 command line tools the installer falls back to a plain wrapper bundle with no menu bar item.
