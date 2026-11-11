@@ -462,7 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let checkUpdatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
     private let forceMenu = NSMenu()
     private let releaseItem = NSMenuItem(title: "Release (follow hooks)", action: #selector(releaseForce), keyEquivalent: "")
-    /// A one-off update line ("Checking…", "Updated to 0.4.0"), shown until the menu has been seen with it.
+    /// A one-off update line ("Checking…", "Update installed…"), shown until the menu has been seen with it.
     private var updateNote: String?
     private var updateNoteSeen = false
     private var checkingUpdates = false
@@ -745,8 +745,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return a.runModal()
     }
 
-    /// When the daemon comes back on a different version (after Install Update…, or after the
-    /// background updater ran), say so: a dialog if the user asked for the update, else a menu line.
+    /// When the daemon comes back on a new version after Install Update…, say so in a dialog.
+    /// Updates the background updater installs are not announced; the version line shows them.
     private func noticeVersion(_ state: DaemonState) {
         guard let version = state.update?.version else { return }
         let defaults = UserDefaults.standard
@@ -755,10 +755,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let requestedAt = defaults.double(forKey: "updateRequestedAt")
         let requested = requestedAt > 0 && Date().timeIntervalSince1970 - requestedAt < 15 * 60
         if requestedAt > 0 && !requested { defaults.removeObject(forKey: "updateRequestedAt") }
-        guard let was = previous, was != version else { return }
-        updateNote = "Updated to \(version) (was \(was))"
-        updateNoteSeen = false
-        guard requested else { return }
+        guard let was = previous, was != version, requested else { return }
         defaults.removeObject(forKey: "updateRequestedAt")
         installing = nil
         let answer = alert("Clawdbox updated to \(version)", "You were on \(was).", buttons: ["OK", "What's New"])

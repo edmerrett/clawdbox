@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+- The "Updated to … (was …)" menu line after a background update. The version line already shows what is running;
+  an update you start with Install Update… still ends with a dialog.
+
 ## 0.4.2
 
 ### Security
