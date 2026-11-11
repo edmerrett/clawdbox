@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2
+
+### Security
+- Updates are signature-checked. `scripts/update.sh` (the six-hourly updater and Install Update…) installs a release
+  tag only if it is an annotated tag signed by a key in `scripts/release-signers`, read from the installed checkout;
+  push access to the repository is no longer enough to ship an update. `scripts/verify-release.sh` does the check,
+  pins `ssh-keygen` as the verifier and refuses a tag object replayed under another name. `--main` is unchecked.
+
 ## 0.4.1
 
 ### Changed

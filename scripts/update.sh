@@ -1,6 +1,8 @@
 #!/bin/bash
 # Update a git-based clawdbox install in place, safely:
 #   - updates to the newest release tag (v*), not whatever is on main (--main to track main)
+#   - installs a tag only if it is signed by a key in scripts/release-signers, read from the
+#     checkout already installed (so a new tag cannot vouch for itself)
 #   - refuses when the checkout has local changes
 #   - builds into dist.new and swaps only on success; on failure the checkout is reset to
 #     the previously built commit, so a bad update never leaves a broken install behind
@@ -57,6 +59,16 @@ if [ "$CURRENT" = 1 ] && [ "$FORCE" = 1 ]; then
 fi
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   say "local changes present; refusing to update:"; git status --porcelain --untracked-files=no | sed 's/^/    /'; exit 4
+fi
+
+# Who made this release: the tag must carry a good signature from a trusted key. --force on a
+# current install rebuilds what is already checked out and needs no check.
+if [ "$TRACK" = tags ] && [ "$TARGET_REF" != HEAD ]; then
+  say "checking the signature on $TARGET_REF"
+  "$ROOT/scripts/verify-release.sh" "$ROOT/scripts/release-signers" "$TARGET_REF" || {
+    say "not updating: $TARGET_REF is not signed by a trusted release key (see scripts/release-signers)"; exit 5; }
+elif [ "$TRACK" = main ]; then
+  say "following main: commits are not signature-checked"
 fi
 
 PREV=$(git rev-parse HEAD)

@@ -20,8 +20,14 @@ clawdbox runs entirely on your machine.
   command pins `/usr/bin/curl`. A `.clawdbox.bak` with the original mode is kept until `uninstall-hooks`.
 - **Updates and trust.** `clawdbox update` follows release tags (not `main`), installs Node dependencies with
   `--ignore-scripts`, builds into a staging directory and rolls back on failure. The Python dependency is pinned.
-  The six-hourly auto-updater is installed by default (`--no-auto-update` to skip it); keeping it means trusting
-  whoever can push a `v*` tag to this repository, and nothing on `main` reaches an install until it is tagged.
+  The six-hourly auto-updater is installed by default (`--no-auto-update` to skip it). It installs a `v*` tag only
+  when the tag is an annotated tag, named as its ref says, with a good SSH signature from a key in
+  `scripts/release-signers`. That file is read from the checkout already installed, so a new tag cannot vouch for
+  itself, and the verifier is pinned to `ssh-keygen` whatever your git config says. Push access to the repository
+  alone therefore cannot ship an update: it also takes the release signing key. A tag that fails the check is
+  refused (and blocks updates until it is removed or replaced), and nothing on `main` reaches an install until it is
+  tagged. `--main` follows `main` without signature checks. Git checks each object's hash and `npm ci` checks every
+  package against the sha512 in `package-lock.json`; the Python bridge dependency is pinned by version only.
   The daemon's only network egress is one `git ls-remote` of this repository every six hours (`--no-update-check`
   disables it); the updater, when enabled, fetches from GitHub, npm and PyPI.
 - **Clawdbox.app.** It hosts the daemon from a config file (`~/Library/Application Support/clawdbox/daemon.json`,

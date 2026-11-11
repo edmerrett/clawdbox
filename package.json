@@ -1,6 +1,6 @@
 {
   "name": "clawdbox",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Claude Code companion for the Divoom TimeBox Evo: hooks drive a pixel-art Clawd on a 16x16 LED matrix",
   "type": "module",
   "license": "MIT",
