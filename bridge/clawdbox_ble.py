@@ -7,7 +7,7 @@ The Node daemon spawns this and talks JSON lines over stdin/stdout:
   -> {"id":1,"op":"anim","name":"idle","frames":[{"ms":200,"pixels":[[r,g,b],...256]}...]}
   -> {"id":2,"op":"brightness","value":60}
   -> {"id":3,"op":"ping"}
-  <- {"ev":"ready"} {"ev":"connected","address":..} {"ev":"log","message":..}
+  <- {"ev":"ready"} {"ev":"connected","address":..} {"ev":"disconnected","message":..} {"ev":"log","message":..}
   <- {"ev":"shown","id":1,"re":"anim",...}  {"ev":"error","id":2,"re":"brightness","message":..}
 
 Replies to ops carry the request "id" and "re" (the op name); everything else is status.
@@ -64,6 +64,9 @@ STDIN_LIMIT = 16 * 1024 * 1024
 # How long an op may wait for the link to come back before it fails (the daemon
 # retries on its own schedule; holding the lock forever would replay stale states).
 RECONNECT_BUDGET_S = 45
+# How often to check that the BLE link is still up. A box that powers off while the panel
+# is idle sends no error on its own; without this the daemon keeps reporting "connected".
+LINK_CHECK_S = 3
 
 
 def emit(**ev: Any) -> None:
@@ -91,10 +94,18 @@ class Bridge:
         self.slot_of: dict[str, int] = {}
         self.preloaded: list[tuple[str, list[Frame]]] = []
         self.latest_anim_id: int | None = None
+        self.connecting: asyncio.Task[None] | None = None
 
     # ---------- connection ----------
 
     async def connect(self) -> None:
+        """Connect, or join the attempt already running, so a watchdog drop and a failed
+        write never run two connect loops side by side."""
+        if self.connecting is None or self.connecting.done():
+            self.connecting = asyncio.create_task(self._connect_loop())
+        await asyncio.shield(self.connecting)
+
+    async def _connect_loop(self) -> None:
         backoff = 2
         while not self.stopping.is_set():
             try:
@@ -122,8 +133,10 @@ class Bridge:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30)
 
-    async def _drop_client(self) -> None:
+    async def _drop_client(self, reason: str = "link dropped") -> None:
         """Disconnect if we can; the link may already be dead, which is fine."""
+        if self.connected.is_set():
+            emit(ev="disconnected", message=reason)
         self.connected.clear()
         client, self.client = self.client, None
         if client is None:
@@ -140,6 +153,29 @@ class Bridge:
             log("re-uploading slots after reconnect")
             for name, frames in self.preloaded:
                 await self._upload_slot(name, frames)
+
+    def link_alive(self) -> bool:
+        """False once the OS has noticed the box is gone (powered off, out of range)."""
+        client = self.client
+        if client is None:
+            return False
+        ble = getattr(client, "_ble", None)  # divoom-protocol keeps its BleakClient here
+        return ble is None or bool(getattr(ble, "is_connected", True))
+
+    async def watch_link(self) -> None:
+        """Notice a dead link even when nothing is being written, report it, and reconnect."""
+        while not self.stopping.is_set():
+            await asyncio.sleep(LINK_CHECK_S)
+            if not self.connected.is_set() or self.link_alive():
+                continue
+            async with self.lock:
+                if not self.connected.is_set() or self.link_alive():
+                    continue  # an op already handled it
+                log("BLE link lost (panel off or out of range); reconnecting")
+                await self.stop_stream()
+                await self._drop_client("panel off or out of range")
+            # the daemon re-shows the current state (or re-preloads slots) on "connected"
+            await self.connect()
 
     async def with_retry(self, fn: Callable[[], Awaitable[Any]]) -> None:
         """Run fn(); on a link error reconnect (bounded) and run it again."""
@@ -284,6 +320,7 @@ class Bridge:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stopping.set)
         connect_task = asyncio.create_task(self.connect())
+        watch_task = asyncio.create_task(self.watch_link())
         reader = asyncio.StreamReader(limit=STDIN_LIMIT)
         await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
         stop_wait = asyncio.create_task(self.stopping.wait())
@@ -317,9 +354,13 @@ class Bridge:
             self.stopping.set()
             stop_wait.cancel()
             connect_task.cancel()
+            watch_task.cancel()
+            if self.connecting is not None:
+                self.connecting.cancel()
             for t in list(pending_ops):
                 t.cancel()
-            await asyncio.gather(connect_task, stop_wait, *pending_ops, return_exceptions=True)
+            extra = [self.connecting] if self.connecting is not None else []
+            await asyncio.gather(connect_task, watch_task, stop_wait, *extra, *pending_ops, return_exceptions=True)
             await self.stop_stream()
             await self._drop_client()
             log("bridge stopped")

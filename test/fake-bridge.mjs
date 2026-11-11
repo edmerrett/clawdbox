@@ -2,12 +2,21 @@
 // Speaks the same JSON-lines protocol. Behaviour is steered by env vars:
 //   FAKE_FAIL_FIRST=1  -> the first "anim" op answers with an error
 //   FAKE_SLOW_CONNECT=ms -> delay before "connected"
+//   FAKE_DROP_AFTER=ms -> after connecting, report the panel lost; FAKE_BACK_AFTER=ms later, connected again
 import { createInterface } from 'node:readline';
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\n');
 emit({ ev: 'ready', mode: 'fake' });
 emit({ ev: 'error', message: 'connect failed: simulated; retry in 2s' }); // status, not a reply
 let failed = false;
-setTimeout(() => emit({ ev: 'connected', address: 'fake-uuid' }), Number(process.env.FAKE_SLOW_CONNECT ?? 50));
+setTimeout(() => {
+  emit({ ev: 'connected', address: 'fake-uuid' });
+  if (!process.env.FAKE_DROP_AFTER) return;
+  setTimeout(() => {
+    emit({ ev: 'disconnected', message: 'panel off or out of range' });
+    if (process.env.FAKE_BACK_AFTER)
+      setTimeout(() => emit({ ev: 'connected', address: 'fake-uuid' }), Number(process.env.FAKE_BACK_AFTER));
+  }, Number(process.env.FAKE_DROP_AFTER));
+}, Number(process.env.FAKE_SLOW_CONNECT ?? 50));
 createInterface({ input: process.stdin }).on('line', (line) => {
   const m = JSON.parse(line);
   if (m.op === 'anim') {
