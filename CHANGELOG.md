@@ -11,6 +11,10 @@
   `clawdbox show <state> --hold` and `clawdbox release`; `/state` reports `held`. A plain `/show/<state>` (the
   previewer, `clawdbox show`) still lasts until the next hook event.
 
+### Removed
+- The animated explainer video and its tooling (`docs/promo`, `scripts/render-promo.mjs`, `scripts/make-voice.sh`)
+  and the unused `assets/icon-preview.png`. The README hero is now the all-states sprite GIF.
+
 ## 0.3.0
 
 ### Added
