@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3
 
 ### Removed
 - The "Updated to … (was …)" menu line after a background update. The version line already shows what is running;
