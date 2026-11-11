@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 ### Added
 - Menu bar: Check for Updates… asks the daemon to look for a newer release now (`POST /update-check`) and says
