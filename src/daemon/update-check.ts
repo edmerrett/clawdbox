@@ -5,6 +5,8 @@
  * only network egress of the daemon. Opt out with --no-update-check.
  */
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export interface UpdateInfo {
   version: string;
@@ -57,6 +59,20 @@ async function isAncestor(ancestor: string, descendant: string, cwd: string): Pr
   }
 }
 
+/**
+ * The commit the running build came from: scripts/update.sh stamps it in dist/.built-commit.
+ * HEAD alone is not enough: a `git pull` in the installed checkout moves HEAD without
+ * rebuilding, and the check would then call an old build "up to date".
+ */
+export function builtCommit(repoRoot: string): string | null {
+  try {
+    const sha = readFileSync(join(repoRoot, 'dist', '.built-commit'), 'utf8').trim();
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
 export class UpdateChecker {
   info: UpdateInfo;
   private timer: NodeJS.Timeout | null = null;
@@ -83,20 +99,21 @@ export class UpdateChecker {
 
   /**
    * An update is available when the newest release tag on origin is not an ancestor
-   * of HEAD. Local commits or a feature branch therefore do not count as "behind".
+   * of the installed build (dist/.built-commit, else HEAD). Local commits or a feature
+   * branch therefore do not count as "behind".
    */
   async check(): Promise<UpdateInfo> {
     if (this.running) return this.info;
     this.running = true;
     try {
-      const commit = await run('git', ['rev-parse', 'HEAD'], this.repoRoot);
+      const commit = builtCommit(this.repoRoot) ?? (await run('git', ['rev-parse', 'HEAD'], this.repoRoot));
       const release = await latestRelease(this.repoRoot);
       const latest = release?.commit ?? null;
       let available = false;
       if (latest && latest !== commit) {
         // fetch just that commit so ancestry can be tested without moving anything
         await run('git', ['fetch', '--quiet', '--depth=1', 'origin', latest], this.repoRoot, 60_000).catch(() => undefined);
-        available = !(await isAncestor(latest, 'HEAD', this.repoRoot));
+        available = !(await isAncestor(latest, commit, this.repoRoot));
       }
       if (available && !this.info.updateAvailable && latest) {
         this.log(`update available: ${this.info.version} -> ${release?.version} (${latest.slice(0, 7)}; run: clawdbox update)`);

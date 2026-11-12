@@ -72,7 +72,8 @@ elif [ "$TRACK" = main ]; then
 fi
 
 PREV=$(git rev-parse HEAD)
-CHANGED=$(git diff --name-only "$PREV" "$TARGET" || true)
+# What changed since the running build, not since HEAD: a `git pull` may have moved HEAD already.
+CHANGED=$(git diff --name-only "$BUILT" "$TARGET" 2>/dev/null || git diff --name-only "$PREV" "$TARGET" || true)
 say "updating $(short "$PREV") -> $TARGET_REF ($(short "$TARGET"))"
 
 rollback() {
