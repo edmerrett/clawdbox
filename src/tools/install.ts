@@ -141,6 +141,28 @@ export function uninstallHooks(path = settingsPath()): void {
 
 export const LAUNCHD_LABEL = 'com.clawdbox.daemon';
 export const APP_NAME = 'Clawdbox';
+/** CFBundleIdentifier of the menu bar app (menubar/Info.plist). */
+export const MENUBAR_BUNDLE_ID = 'com.clawdbox.app';
+
+/**
+ * macOS 13+ (Background Task Management) shows "“Clawdbox” can run in the background" whenever
+ * it sees a launch agent it cannot tie to a known app, and an ad-hoc signed program has no stable
+ * signing identity to tie it to, so the notice came back at every login and after every rebuild.
+ * AssociatedBundleIdentifiers attributes our agents to the Clawdbox app by bundle id instead,
+ * which gives them one stable entry in Login Items.
+ */
+function associatedBundleIds(ids: string[]): string {
+  return `    <key>AssociatedBundleIdentifiers</key>
+    <array>
+${ids.map((id) => `      <string>${esc(id)}</string>`).join('\n')}
+    </array>
+`;
+}
+
+/** Bundle ids our agents belong to: the menu bar app, plus the wrapper bundle when that hosts the daemon. */
+export function agentBundleIds(hostingApp: boolean): string[] {
+  return hostingApp ? [MENUBAR_BUNDLE_ID] : [MENUBAR_BUNDLE_ID, LAUNCHD_LABEL];
+}
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
@@ -219,7 +241,7 @@ export function writeAppBundle(appDir: string, files: Record<string, string>, ic
 }
 
 /** launchd agent that runs the app bundle's launcher script. */
-export function launchdPlist(opts: { launcher: string; logDir: string; cwd: string }): string {
+export function launchdPlist(opts: { launcher: string; logDir: string; cwd: string; bundleIds?: string[] }): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -244,7 +266,7 @@ export function launchdPlist(opts: { launcher: string; logDir: string; cwd: stri
     <string>${esc(join(opts.logDir, 'clawdbox.err.log'))}</string>
     <key>ProcessType</key>
     <string>Interactive</string>
-  </dict>
+${associatedBundleIds(opts.bundleIds ?? [MENUBAR_BUNDLE_ID])}  </dict>
 </plist>
 `;
 }
@@ -262,7 +284,7 @@ export function updaterPlistPath(): string {
 }
 
 /** Runs scripts/update.sh on a fixed interval; it exits quickly when nothing changed. */
-export function updaterPlist(opts: { script: string; logDir: string; cwd: string; intervalSec: number }): string {
+export function updaterPlist(opts: { script: string; logDir: string; cwd: string; intervalSec: number; bundleIds?: string[] }): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -289,7 +311,7 @@ export function updaterPlist(opts: { script: string; logDir: string; cwd: string
       <key>PATH</key>
       <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
-  </dict>
+${associatedBundleIds(opts.bundleIds ?? [MENUBAR_BUNDLE_ID])}  </dict>
 </plist>
 `;
 }
