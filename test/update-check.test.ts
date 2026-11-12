@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UpdateChecker, compareVersions } from '../src/daemon/update-check.js';
@@ -45,4 +45,28 @@ test('reports the newest release version and that it is not installed yet', asyn
   const after = await new UpdateChecker(checkout, '0.10.0').check();
   assert.equal(after.updateAvailable, false);
   assert.equal(after.latestVersion, '0.10.0');
+});
+
+test('a pulled but not rebuilt checkout still reports the update (dist/.built-commit wins over HEAD)', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'clawdbox-upd-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const origin = join(dir, 'origin');
+  const checkout = join(dir, 'checkout');
+  execFileSync('git', ['init', '-q', '-b', 'main', origin]);
+  writeFileSync(join(origin, 'f'), '1');
+  git(origin, 'add', 'f');
+  git(origin, 'commit', '-qm', 'one');
+  git(origin, 'tag', '-a', 'v0.9.0', '-m', '0.9.0');
+  execFileSync('git', ['clone', '-q', origin, checkout]);
+  const built = git(checkout, 'rev-parse', 'HEAD');
+  mkdirSync(join(checkout, 'dist'));
+  writeFileSync(join(checkout, 'dist', '.built-commit'), built + '\n');
+  writeFileSync(join(origin, 'f'), '2');
+  git(origin, 'commit', '-qam', 'two');
+  git(origin, 'tag', '-a', 'v0.10.0', '-m', '0.10.0');
+  git(checkout, 'pull', '-q', '--ff-only', 'origin', 'main'); // HEAD is now the release; dist is not
+
+  const info = await new UpdateChecker(checkout, '0.9.0').check();
+  assert.equal(info.commit, built);
+  assert.equal(info.updateAvailable, true);
 });

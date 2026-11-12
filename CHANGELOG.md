@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Check for Updates… said "up to date" on an old build when the installed checkout had been `git pull`ed without
+  rebuilding: the check compared the newest release with git HEAD. It now compares with the commit the running build
+  came from (`dist/.built-commit`, falling back to HEAD), and `scripts/update.sh` decides whether to rebuild
+  Clawdbox.app and the bridge from what changed since that build, not since HEAD.
+
 ## 0.4.4
 
 ### Fixed
