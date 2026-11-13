@@ -88,11 +88,13 @@ if [ "$TRACK" = tags ]; then git checkout --quiet "$TARGET"; else git merge --ff
 
 # Dependencies without running install scripts; the one native optional module is rebuilt
 # only when the install actually uses the original Evo's Bluetooth Classic transport.
+say "installing dependencies"
 npm ci --no-audit --no-fund --silent --ignore-scripts
 if grep -q -- '--mac\|--serial' "$HOME/Library/Application Support/clawdbox/daemon.json" "$HOME/Applications/Clawdbox.app/Contents/MacOS/clawdbox" 2>/dev/null; then
   npm rebuild bluetooth-serial-port --silent || say "bluetooth-serial-port did not build; the Classic transport may be unavailable"
 fi
 # Build beside the live dist/ and swap in one move.
+say "building"
 npx tsc -p tsconfig.json --outDir dist.new
 chmod +x dist.new/cli.js
 echo "$TARGET" > dist.new/.built-commit
@@ -120,6 +122,13 @@ done
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   say "restarting the daemon"
   launchctl kickstart -k "gui/$(id -u)/$LABEL"
+elif pgrep -x Clawdbox >/dev/null 2>&1 && [ -d "$HOME/Applications/Clawdbox.app" ]; then
+  # Clawdbox.app was started outside launchd (opened by hand or as a login item) and hosts the
+  # daemon itself; without this the old daemon kept running and the update looked like a no-op.
+  say "restarting Clawdbox.app (it is not running under launchd)"
+  pkill -x Clawdbox || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Clawdbox >/dev/null 2>&1 || break; sleep 0.5; done
+  open -g "$HOME/Applications/Clawdbox.app" || say "could not relaunch Clawdbox.app; open it yourself"
 else
   say "daemon is not installed as a launchd agent; restart it yourself if it is running"
 fi

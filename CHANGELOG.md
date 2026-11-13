@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.6
+
+### Added
+- The menu bar shows when Clawdbox is connecting to the Divoom. Instead of "idle (no panel)" while Bluetooth comes up,
+  it reads "connecting…" with a pulsing icon, and the menu says "Connecting to the Divoom over Bluetooth…". After
+  45 seconds without a connection it reads "no panel", and the menu says it can't reach the Divoom (with the last
+  error), to check it is switched on and nearby, and that it is still retrying. The daemon's `/state` gains
+  `device.downSec`, how long the panel has been unreachable.
+
+### Changed
+- Install Update… shows what it is doing. While it runs, the menu shows the update's current step (checking the
+  signature, installing dependencies, building, rebuilding Clawdbox.app, restarting) instead of a fixed
+  "Installing update…" line. When it ends without restarting Clawdbox, you get a dialog: "Nothing to install" when
+  the build is already current (and the stale "update available" line goes away), or "Update failed" naming the step
+  it stopped at. When it installed without a restart, the daemon is restarted so the new build runs.
+
+### Fixed
+- Updates installed but never took effect when Clawdbox.app had been started outside launchd (opened by hand, or by
+  an old login item): `update.sh` could not restart it, so the old daemon kept running, Check for Updates… said
+  "up to date" on the old version, and Install Update… did nothing. `update.sh` now restarts Clawdbox.app in that
+  case, and Install Update… restarts a daemon that still reports an older version than the installed checkout.
+
 ## 0.4.5
 
 ### Fixed
