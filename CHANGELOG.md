@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.6
 
 ### Added
 - The menu bar shows when Clawdbox is connecting to the Divoom. Instead of "idle (no panel)" while Bluetooth comes up,
