@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.8
+
+### Changed
+- Build tooling: TypeScript 7 (the native compiler) and the Node 26 type definitions. Dependabot updated the
+  workflows' GitHub Actions too (checkout, setup-node, setup-python and upload-artifact to v7), still pinned to
+  commit SHAs. Nothing changes in what runs on your Mac. The first update after this downloads the new compiler for
+  your platform.
+
 ## 0.4.7
 
 ### Security
