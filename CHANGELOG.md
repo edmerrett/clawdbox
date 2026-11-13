@@ -9,6 +9,12 @@
   the build is already current (and the stale "update available" line goes away), or "Update failed" naming the step
   it stopped at. When it installed without a restart, the daemon is restarted so the new build runs.
 
+### Fixed
+- Updates installed but never took effect when Clawdbox.app had been started outside launchd (opened by hand, or by
+  an old login item): `update.sh` could not restart it, so the old daemon kept running, Check for Updates… said
+  "up to date" on the old version, and Install Update… did nothing. `update.sh` now restarts Clawdbox.app in that
+  case, and Install Update… restarts a daemon that still reports an older version than the installed checkout.
+
 ## 0.4.5
 
 ### Fixed

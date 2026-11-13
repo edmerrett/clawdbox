@@ -122,6 +122,13 @@ done
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   say "restarting the daemon"
   launchctl kickstart -k "gui/$(id -u)/$LABEL"
+elif pgrep -x Clawdbox >/dev/null 2>&1 && [ -d "$HOME/Applications/Clawdbox.app" ]; then
+  # Clawdbox.app was started outside launchd (opened by hand or as a login item) and hosts the
+  # daemon itself; without this the old daemon kept running and the update looked like a no-op.
+  say "restarting Clawdbox.app (it is not running under launchd)"
+  pkill -x Clawdbox || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Clawdbox >/dev/null 2>&1 || break; sleep 0.5; done
+  open -g "$HOME/Applications/Clawdbox.app" || say "could not relaunch Clawdbox.app; open it yourself"
 else
   say "daemon is not installed as a launchd agent; restart it yourself if it is running"
 fi

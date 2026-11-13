@@ -830,7 +830,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard installing != nil else { return }
         installing = nil
         let last = updateRunSteps().last
-        if status == 0, let line = last, line.hasPrefix("already up to date") {
+        // The checkout is current but the daemon still reports an older version: it was never
+        // restarted onto the new build (e.g. a previous update could not restart it). Restart it now.
+        let running = lastState?.update?.version
+        let installed = installedCheckout().flatMap { root -> String? in
+            guard let data = try? Data(contentsOf: root.appendingPathComponent("package.json")),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            return json["version"] as? String
+        }
+        let stale = running != nil && installed != nil && running != installed
+        if status == 0, let line = last, line.hasPrefix("already up to date"), !stale {
             UserDefaults.standard.removeObject(forKey: "updateRequestedAt")
             render()
             post(daemonBase.appendingPathComponent("update-check"))  // drop the stale "update available"
