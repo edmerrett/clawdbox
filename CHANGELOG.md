@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- The menu bar shows when Clawdbox is connecting to the Divoom. Instead of "idle (no panel)" while Bluetooth comes up,
+  it reads "connecting…" with a pulsing icon, and the menu says "Connecting to the Divoom over Bluetooth…". After
+  45 seconds without a connection it reads "no panel", and the menu says it can't reach the Divoom (with the last
+  error), to check it is switched on and nearby, and that it is still retrying. The daemon's `/state` gains
+  `device.downSec`, how long the panel has been unreachable.
+
 ### Changed
 - Install Update… shows what it is doing. While it runs, the menu shows the update's current step (checking the
   signature, installing dependencies, building, rebuilding Clawdbox.app, restarting) instead of a fixed

@@ -19,6 +19,8 @@ struct DaemonState: Decodable {
         let connected: Bool
         let pushes: Int
         let lastError: String?
+        /// Seconds the panel has been unreachable, nil while connected (older daemons do not send this).
+        let downSec: Int?
     }
     struct Session: Decodable {
         let state: String
@@ -75,9 +77,14 @@ func logPanel(_ line: String) {
 
 /// What the menu bar shows for a given daemon state. Shared by the live UI and `--check`,
 /// so the headless check exercises exactly the rendering the user sees.
+/// How long the menu bar says "connecting…" before it reports that the panel can't be reached.
+let connectGraceSec = 45
+
 struct Rendering {
     let title: String
     let dimmed: Bool
+    /// Trying to reach the panel: the icon pulses.
+    var connecting = false
     let connection: String
     let showing: String
     let transport: String
@@ -101,14 +108,24 @@ struct Rendering {
     }
 
     init(_ s: DaemonState) {
-        title = " " + s.current + (s.device.connected ? "" : " (no panel)")
         dimmed = !s.device.connected
-        connection = s.device.connected
-            ? "Connected to Divoom (\(s.device.pushes) pushes)"
-            : "Panel disconnected" + (s.device.lastError.map { ": \($0)" } ?? "")
         var line = "Showing: \(s.current)"
         if s.pending != s.current { line += "  →  \(s.pending)" }
         if let f = s.forced { line += s.held == true ? "  (holding \(f))" : "  (forced \(f))" }
+        let down = s.device.downSec ?? s.uptimeSec  // older daemons: time since start-up
+        if s.device.connected {
+            title = " " + s.current
+            connection = "Connected to Divoom (\(s.device.pushes) pushes)"
+        } else if down < connectGraceSec {
+            title = " connecting…"
+            connection = "Connecting to the Divoom over Bluetooth…"
+            connecting = true
+        } else {
+            // still retrying in the background; say so and what to check
+            title = " no panel"
+            connection = "Can't reach the Divoom" + (s.device.lastError.map { ": \($0)" } ?? "")
+            line = "Is it switched on and nearby? Still retrying (or use Restart Daemon)"
+        }
         showing = line
         transport = "Transport: \(s.transport ?? s.device.label)"
         let n = s.sessions.count
@@ -471,6 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Where this run's output starts in update.log, so the menu can show its latest step.
     private var installLogOffset: UInt64 = 0
     private var supervisor: DaemonSupervisor?
+    private var pulseOn = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Host the daemon when install-launchd configured one (and we were not told to stay a pure UI).
@@ -626,7 +644,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func render() {
         let r: Rendering
         if reachable, let s = lastState { r = Rendering(s) } else { r = Rendering.offline() }
-        statusItem.button?.image = clawdIcon(dimmed: r.dimmed)
+        // while connecting, the icon pulses: bright and dim on alternate refreshes (every 2 s)
+        pulseOn = r.connecting && !pulseOn
+        statusItem.button?.image = clawdIcon(dimmed: r.dimmed && !pulseOn)
         statusItem.button?.title = installing != nil ? " updating…" : r.title
         configure(panel, state: reachable ? lastState : nil)
         connectionItem.title = r.connection

@@ -1,3 +1,4 @@
+import { downtimeTracker } from './downtime.js';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +110,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     log('using built-in Clawd sprites (pass --anims <dir> for your own)');
   }
 
+  const panelDown = downtimeTracker();
   let device: Display;
   if (cfg.ble) {
     device = new BleDisplay({
@@ -214,7 +216,13 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         transport: cfg.mock ? 'mock' : cfg.ble ? `ble ${cfg.bleMode ?? 'stream'}` : cfg.serial ? 'serial' : 'rfcomm',
         sessions: Object.fromEntries(reducer.sessions),
         states: STATES,
-        device: { label: device.label, connected: device.connected, pushes: device.pushes, lastError: device.lastError },
+        device: {
+          label: device.label,
+          connected: device.connected,
+          pushes: device.pushes,
+          lastError: device.lastError,
+          downSec: panelDown(device.connected),
+        },
         uptimeSec: Math.round(process.uptime()),
         update: updates.info,
       }),
