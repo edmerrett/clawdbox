@@ -132,6 +132,8 @@ fi
 # ---------- the app (menu bar + daemon host) ----------
 if [ "$MENUBAR" = 1 ]; then
   step "building Clawdbox.app"
+  # a stable local signing certificate, so the Bluetooth permission survives updates
+  menubar/make-signing-cert.sh || echo "could not create the signing certificate; the app is ad-hoc signed (Bluetooth is asked again after updates)"
   if [ "$LAUNCHD" = 1 ]; then menubar/install.sh; else menubar/install.sh --login-item; fi
 fi
 

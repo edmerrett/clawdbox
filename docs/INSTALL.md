@@ -29,6 +29,7 @@ python3 -m venv .venv && .venv/bin/pip install -r bridge/requirements.txt   # ne
 node dist/cli.js send writing --ble            # smoke test: Clawd types on the panel (original Evo: --mac XX:…)
 node dist/cli.js daemon --ble -v               # run the daemon; previewer at http://127.0.0.1:7676
 node dist/cli.js install-hooks                 # merge hooks into ~/.claude/settings.json (backs it up first)
+menubar/make-signing-cert.sh                   # once per Mac: keeps the Bluetooth permission across updates
 menubar/install.sh                             # build Clawdbox.app (menu bar + daemon host)
 node dist/cli.js install-launchd --ble         # login agent + six-hourly release updater (--no-auto-update to skip)
 ```

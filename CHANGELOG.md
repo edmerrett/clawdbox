@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- macOS no longer asks for Bluetooth again after every update. The permission is tied to the app's code signature,
+  and the ad-hoc signature changed with every rebuild. `menubar/make-signing-cert.sh` (run once per Mac) creates a
+  self-signed "Clawdbox Local Signing" certificate in the login keychain, and `menubar/build.sh` signs Clawdbox.app
+  with it whenever it exists, so the signature's identity stays the same across updates. `CLAWDBOX_SIGN_IDENTITY`
+  picks another identity. `install.sh` creates the certificate. Without one the build is ad-hoc signed as before,
+  and says so.
+
 ## 0.4.6
 
 ### Added
