@@ -1,6 +1,5 @@
 # Hardware: which Divoom, which transport
 
-
 | | Original Timebox Evo (2018–~2023) | Newer TimeBox-Evo-audio / Backpack M |
 |---|---|---|
 | Speaker shows up as | `Timebox-Evo-audio` | `TimeBox-Evo-audio` (capital B) |

@@ -15,7 +15,7 @@ six-hourly release updater, and then waits for Clawd to appear on the panel. Re-
    one controller at a time.
 3. Run it from **Terminal.app or iTerm2**, which declare Bluetooth usage to macOS.
 
-Original Evo (Bluetooth Classic, see [Which Evo?](#which-evo))? Add `--mac XX:XX:XX:XX:XX:XX`. Pass flags to the
+Original Evo (Bluetooth Classic, see [Which Evo?](HARDWARE.md))? Add `--mac XX:XX:XX:XX:XX:XX`. Pass flags to the
 one-liner with `| bash -s -- --mac …`. Other flags: `--no-auto-update` (skip the six-hourly release updater),
 `--no-hooks`, `--no-launchd`, `--no-menubar`, `--brightness N`, `--dir PATH`. `uninstall.sh` removes everything
 the installer set up. Prefer to read before you run? `curl -fsSLO …/install.sh && less install.sh && bash install.sh`;
@@ -37,17 +37,25 @@ node dist/cli.js install-launchd --ble         # login agent + six-hourly releas
 
 ## Clawdbox.app
 
-One app does three jobs: it sits in the menu bar (Clawd silhouette plus the current state, dimmed when the panel is
-disconnected), it hosts the node daemon as a child process so the daemon inherits its Bluetooth permission, and it
-restarts the daemon if it dies. Click it and the menu opens on a small digital Divoom playing whatever the panel is
-showing, live. Below that the menu offers Check for Updates, Open Previewer, Force State, Restart Daemon, Show Logs
-and, when a newer release exists, Install Update. The menu shows the installed version (`Clawdbox 0.4.0`). Check for
-Updates answers in a dialog (up to date, or the new version with Install Now); while an update installs the menu bar
-reads "updating…", and once the new version is running a dialog says so. Updates the six-hourly updater installs on
-its own are silent; the version line shows what is running. The update log is `~/Library/Logs/clawdbox/update.log`. A state picked under Force State is held (ticked) whatever the hooks
-say, until you pick Release or the same state again. Quit stops the daemon too, until the next login.
+One app does three jobs. It sits in the menu bar, it hosts the node daemon as a child process (so the daemon
+inherits its Bluetooth permission), and it restarts the daemon if it dies. The menu bar reads the current state when
+the panel is connected. It reads `connecting…`, with a pulsing icon, while it reaches the panel after start-up or a
+drop, and `no panel` (dimmed) once that has taken 45 s; the menu then shows the last error, and it keeps retrying.
+It reads `offline` when the daemon is not running.
+
+Click it and the menu opens on a small digital Divoom playing whatever the panel is showing, live. Below that are
+the connection, transport, sessions and installed version, then Check for Updates…, Open Previewer, Force State,
+Restart Daemon, Show Logs and, when a newer release exists, Install Update…. A state picked under Force State is held
+(ticked) whatever the hooks say, until you pick Release or the same state again. Quit stops the daemon too, until the
+next login.
+
 `~/Applications/Clawdbox.app/Contents/MacOS/Clawdbox --check` prints what the menu bar would show. Without the Xcode
 command line tools the installer falls back to a plain wrapper bundle with no menu bar item.
+
+**Signing.** macOS ties the Bluetooth permission to the app's code signature. `menubar/build.sh` signs with the
+"Clawdbox Local Signing" certificate when your login keychain has one. `menubar/make-signing-cert.sh` creates it,
+and the installer runs that for you. Otherwise the app is signed ad-hoc, which changes with every rebuild, so macOS
+asks for Bluetooth again after each update. `CLAWDBOX_SIGN_IDENTITY` picks a different identity.
 
 ## Daemon options
 
@@ -85,24 +93,38 @@ forwards the hook JSON to the daemon's `0600` Unix socket and always exits 0. Cl
 stopped daemon costs nothing, and no other local process can receive the payload. `install-hooks --http` uses
 Claude Code's native `http` hook type over TCP instead (no shell, but Claude Code awaits it, reports a non-blocking
 error per event while the daemon is down, and the port could be squatted; run the daemon with `--tcp-events`). See
-[`hooks/claude-hooks.example.json`](hooks/claude-hooks.example.json). `uninstall-hooks` removes exactly what was added.
+[`hooks/claude-hooks.example.json`](../hooks/claude-hooks.example.json). `uninstall-hooks` removes exactly what was added.
 
 Prompt text is only ever pattern-matched in memory (for "thanks" and "ultrathink"). It is not logged or stored.
 
 ## Updating
 
+Updates install themselves: a launchd agent runs `scripts/update.sh` every six hours (log in
+`~/Library/Logs/clawdbox/update.log`). It installs the newest release tag, never `main`, and only when the tag is
+signed by a key in `scripts/release-signers` (see [SECURITY.md](../SECURITY.md)). It builds into a staging
+directory and swaps that in only on success. A failed build restores the previous commit. It rebuilds Clawdbox.app
+when the menu bar sources changed since the running build, then restarts Clawdbox. `--no-auto-update` (installer)
+skips the agent.
+
+In the menu bar, **Check for Updates…** asks now. When a release is available, **Install Now** runs the same update
+and shows its current step in the menu (checking the signature, installing dependencies, building, rebuilding
+Clawdbox.app, restarting). It ends with "Clawdbox updated to x.y.z", "Nothing to install", or "Update failed"
+naming the step it stopped at.
+
+From a terminal:
+
 ```bash
-clawdbox update            # update to the newest release tag, rebuild, rebuild Clawdbox.app if it changed, restart
+clawdbox update            # update to the newest release tag, rebuild, restart
 clawdbox update --check    # exit 0 if a newer release exists, 1 if current
-clawdbox update --main     # follow origin/main instead of release tags
+clawdbox update --force    # rebuild everything, even when already current
+scripts/update.sh --main   # follow origin/main instead of release tags (not signature-checked)
 ```
-The update builds into a staging directory and swaps it in only on success; a failed build restores the previous
-commit. Dependencies are installed with `--ignore-scripts`. The installer also adds a launchd agent that runs the
-update every six hours (log in `~/Library/Logs/clawdbox/update.log`); it follows release tags only, never `main`, and
-`--no-auto-update` skips it. The daemon itself only checks (one `git ls-remote` every six hours) and reports in
-`/state`; the menu bar then shows "Update available" with an "Install Update…" item. `--no-update-check` turns even
-that off. Tagged releases (`v*`) are built by GitHub Actions and published with `Clawdbox.app` zipped, the npm
-tarball and a `SHA256SUMS`.
+
+The install checkout belongs to the updater. Don't `git pull` or switch branches in it: that moves the source ahead
+of the build that is running. Work on clawdbox in a separate clone. The daemon itself only checks for releases
+(one `git ls-remote` every six hours, `--no-update-check` to turn it off) and reports in `/state`. Tagged releases
+(`v*`) are also published on GitHub with `Clawdbox.app` zipped, the npm tarball, a `SHA256SUMS` and build
+provenance attestations.
 
 ## Linux
 The daemon and the BLE bridge run on Linux (bleak uses BlueZ). There is no installer or menu bar app; follow the

@@ -3,7 +3,9 @@
 Thanks for helping Clawd out.
 
 ## Dev loop
+Work in your own clone, not in an install's checkout (`~/Tools/clawdbox` belongs to the auto-updater):
 ```bash
+git clone https://github.com/edmerrett/clawdbox ~/src/clawdbox && cd ~/src/clawdbox
 npm install
 npm run dev          # daemon against a mock panel, previewer at http://127.0.0.1:7676
 npm test             # unit tests (node:test), no device needed
@@ -40,12 +42,28 @@ Open an issue with: the Bluetooth name(s) it advertises, whether it pairs as a s
 `node dist/cli.js diag --mac <addr>` and `node dist/cli.js ble-scan`.
 
 ## Releasing
-Bump `version` in `package.json` and turn `## Unreleased` in CHANGELOG.md into `## <version>`, merge, then push a
-**signed** annotated tag on `main`: `git tag -s v<version> -m "clawdbox <version>" && git push origin v<version>`.
-Installs refuse a tag that is not signed by a key in `scripts/release-signers` (`scripts/verify-release.sh
-scripts/release-signers v<version>` checks one), so set `git config tag.gpgSign true` to never forget `-s`. Pushing
-the tag runs the release workflow.
+1. In a PR, bump `version` in `package.json` and `package-lock.json` and turn `## Unreleased` in CHANGELOG.md into
+   `## <version>`. Merge it once CI is green.
+2. Tag the merged commit on `main` with a **signed** annotated tag, check it, and push it:
+   ```bash
+   git fetch origin main --tags
+   git tag -s v<version> -m "clawdbox <version>" origin/main
+   git show v<version>:package.json | grep '"version"'          # must be <version>
+   scripts/verify-release.sh scripts/release-signers v<version> # must print Good "git" signature
+   git push origin v<version>
+   ```
+   Tag only after the version bump is on `main`. The release workflow refuses a tag that does not match
+   `package.json`, or that is not signed by a key in `scripts/release-signers`, and installs refuse unsigned tags
+   too. `git config tag.gpgSign true` stops you forgetting `-s`.
+3. Pushing the tag runs the release workflow, which publishes the GitHub release with build provenance. Installs
+   pick it up within six hours, or at once with Check for Updates….
 
 ## Pull requests
-Keep them focused. CI runs lint, format check, tests and a mock run on macOS and Linux, plus a ruff check of the
-bridge and a Swift build of the menu bar app.
+Keep them focused. `main` only changes through squash-merged PRs, and every check must pass: lint, format and tests
+on macOS and Linux with Node 20 and 22, a ruff check of the bridge, the Swift build and a live run of the menu bar
+app, and CodeQL. Add a CHANGELOG entry under `## Unreleased` for anything a user would notice.
+
+## Repository settings
+Branch and tag protection live in [`.github/rulesets/`](.github/rulesets). After changing them, a repository admin
+runs `scripts/apply-repo-settings.sh` (needs the GitHub CLI) to apply them, along with the merge, Dependabot,
+secret-scanning and Actions settings it lists.
