@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Install Update… shows what it is doing. While it runs, the menu shows the update's current step (checking the
+  signature, installing dependencies, building, rebuilding Clawdbox.app, restarting) instead of a fixed
+  "Installing update…" line. When it ends without restarting Clawdbox, you get a dialog: "Nothing to install" when
+  the build is already current (and the stale "update available" line goes away), or "Update failed" naming the step
+  it stopped at. When it installed without a restart, the daemon is restarted so the new build runs.
+
 ## 0.4.5
 
 ### Fixed

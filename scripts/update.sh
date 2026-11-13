@@ -88,11 +88,13 @@ if [ "$TRACK" = tags ]; then git checkout --quiet "$TARGET"; else git merge --ff
 
 # Dependencies without running install scripts; the one native optional module is rebuilt
 # only when the install actually uses the original Evo's Bluetooth Classic transport.
+say "installing dependencies"
 npm ci --no-audit --no-fund --silent --ignore-scripts
 if grep -q -- '--mac\|--serial' "$HOME/Library/Application Support/clawdbox/daemon.json" "$HOME/Applications/Clawdbox.app/Contents/MacOS/clawdbox" 2>/dev/null; then
   npm rebuild bluetooth-serial-port --silent || say "bluetooth-serial-port did not build; the Classic transport may be unavailable"
 fi
 # Build beside the live dist/ and swap in one move.
+say "building"
 npx tsc -p tsconfig.json --outDir dist.new
 chmod +x dist.new/cli.js
 echo "$TARGET" > dist.new/.built-commit
