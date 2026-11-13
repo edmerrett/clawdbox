@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.5
 
 ### Fixed
 - Check for Updates… said "up to date" on an old build when the installed checkout had been `git pull`ed without
