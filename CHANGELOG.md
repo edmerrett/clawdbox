@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.7
 
 ### Security
 - Repository protection as code. `.github/rulesets/` holds two rulesets. One protects `main`: changes go through
