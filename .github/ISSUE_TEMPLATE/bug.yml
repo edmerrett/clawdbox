@@ -1,0 +1,36 @@
+name: Bug report
+description: Clawd is stuck, the panel will not connect, an update misbehaves…
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Clawdbox version
+      description: The version line in the Clawdbox menu (for example "Clawdbox 0.4.6"), or "version" in package.json.
+    validations:
+      required: true
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Panel
+      options: [Newer TimeBox Evo (BLE), Original 2018 Evo (Bluetooth Classic), No panel / mock]
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The last lines of `~/Library/Logs/clawdbox/clawdbox.log` (and `update.log` for update problems).
+        They never contain prompt text, but check before pasting.
+      render: text

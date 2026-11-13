@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- Repository protection as code. `.github/rulesets/` holds two rulesets. One protects `main`: changes go through
+  squash-merged PRs, every CI job and CodeQL must pass, and force-push and deletion are blocked. The other means only
+  admins can create, move or delete `v*` tags. `scripts/apply-repo-settings.sh` applies them, along with squash-only
+  merges, Dependabot alerts and security updates, secret scanning with push protection, private vulnerability
+  reporting, and read-only workflow tokens by default.
+- CodeQL scans the TypeScript, the Python bridge and the workflows on every PR and weekly. Dependabot proposes npm,
+  pip and GitHub Actions updates weekly.
+- The release workflow checks the tag's signature against `scripts/release-signers` before building, as installs
+  do. It publishes build provenance attestations for the app zip, the npm tarball and `install.sh` (verify with
+  `gh attestation verify FILE --repo edmerrett/clawdbox`), and gets write access only in that job.
+- Workflows check out without keeping git credentials, have timeouts, and cancel superseded PR runs.
+- CODEOWNERS, a PR template, a bug report form, and a private route for vulnerability reports.
+
+### Changed
+- README rewritten for how clawdbox works now: all thirteen states, the menu bar's connecting, no-panel and updating
+  states, automatic and on-demand updates, troubleshooting (Bluetooth prompts, the background-activity notice, a
+  panel that won't connect), and a security summary. INSTALL, SECURITY, CONTRIBUTING (release steps, working in a
+  separate clone) and the art guide were brought up to date, and broken doc links fixed. The docs no longer offer
+  `clawdbox update --main`, which never passed `--main` on; use `scripts/update.sh --main`.
+
+### Fixed
+- macOS no longer asks for Bluetooth again after every update. The permission is tied to the app's code signature,
+  and the ad-hoc signature changed with every rebuild. `menubar/make-signing-cert.sh` (run once per Mac) creates a
+  self-signed "Clawdbox Local Signing" certificate in the login keychain, and `menubar/build.sh` signs Clawdbox.app
+  with it whenever it exists, so the signature's identity stays the same across updates. `CLAWDBOX_SIGN_IDENTITY`
+  picks another identity. `install.sh` creates the certificate. Without one the build is ad-hoc signed as before,
+  and says so.
+
 ## 0.4.6
 
 ### Added

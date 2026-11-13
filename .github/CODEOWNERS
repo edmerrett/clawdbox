@@ -1,0 +1,6 @@
+# Every change needs the maintainer's eye; release trust and install paths above all.
+*                               @edmerrett
+/scripts/release-signers        @edmerrett
+/scripts/                       @edmerrett
+/.github/                       @edmerrett
+/install.sh                     @edmerrett

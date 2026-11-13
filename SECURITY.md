@@ -1,5 +1,13 @@
 # Security
 
+## Reporting a vulnerability
+
+Please report privately with GitHub's **Report a vulnerability** on the repository's
+[Security tab](https://github.com/edmerrett/clawdbox/security/advisories/new), not in a public issue. Fixes go into
+the next release, and only the latest release is supported: the auto-updater moves every install onto it.
+
+## What runs on your machine
+
 clawdbox runs entirely on your machine.
 
 - **Hook events** (which include your prompt text and tool inputs) travel from Claude Code to the daemon over a
@@ -30,7 +38,10 @@ clawdbox runs entirely on your machine.
   package against the sha512 in `package-lock.json`; the Python bridge dependency is pinned by version only.
   The daemon's only network egress is one `git ls-remote` of this repository every six hours (`--no-update-check`
   disables it); the updater, when enabled, fetches from GitHub, npm and PyPI.
-- **Clawdbox.app.** It hosts the daemon from a config file (`~/Library/Application Support/clawdbox/daemon.json`,
+- **Clawdbox.app.** It is built on your Mac from source. It is signed ad-hoc, or with the self-signed
+  "Clawdbox Local Signing" certificate that `menubar/make-signing-cert.sh` creates in your login keychain. That
+  certificate only keeps the app's identity, and with it the Bluetooth permission, stable across rebuilds. It is
+  not an Apple Developer ID, never leaves your Mac, and `menubar/uninstall.sh` removes it. The app hosts the daemon from a config file (`~/Library/Application Support/clawdbox/daemon.json`,
   mode 0600) that must point inside your home folder at clawdbox's own CLI; "Install Update…" runs
   `scripts/update.sh` from the checkout named in the launchd plist, verified the same way. Nothing it executes
   comes from the network.
@@ -39,6 +50,19 @@ clawdbox runs entirely on your machine.
   and kills processes by exact path. Tagged releases publish `SHA256SUMS` covering `install.sh`. `install-launchd` writes
   `~/Library/LaunchAgents/com.clawdbox.daemon.plist` and `~/Applications/Clawdbox.app`. Nothing is written outside
   your home directory and nothing runs as root.
+- **Restarts after an update** go through the launchd agent. If Clawdbox.app is running outside it, `update.sh`
+  quits it by exact process name and reopens `~/Applications/Clawdbox.app`.
 - The Python bridge talks only to the Divoom over Bluetooth and to the daemon over stdio.
 
-To report a problem privately, use GitHub's "Report a vulnerability" on the repository's Security tab, or email the maintainer listed in `package.json`.
+## How the repository is protected
+
+- `main` changes only through squash-merged pull requests. Every CI job (tests on macOS and Linux, the bridge
+  lint, the menu bar app build) and CodeQL must pass. Force-pushes and deletion are blocked.
+- Only repository admins can create, move or delete `v*` release tags. Each tag must also carry an SSH signature
+  from `scripts/release-signers`, which installs check (above) and the release workflow re-checks before building.
+- Releases are built by GitHub Actions with a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations):
+  `gh attestation verify <file> --repo edmerrett/clawdbox` proves a download came from that workflow.
+- Workflows run with read-only tokens unless a job needs more, pin every action to a commit SHA, and do not keep
+  git credentials in the checkout. Dependabot proposes dependency and action updates weekly. Secret scanning with
+  push protection is on.
+- The rulesets live in [`.github/rulesets/`](.github/rulesets) and are applied with `scripts/apply-repo-settings.sh`.

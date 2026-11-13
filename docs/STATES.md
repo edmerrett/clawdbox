@@ -1,6 +1,5 @@
 # States and what triggers them
 
-
 | state | sticker | triggered by |
 |---|---|---|
 | `idle` | Clawd | `SessionStart`, `Stop`, `Notification(idle_prompt)`, an interrupted tool, or a session going silent while busy (see [Interrupts](#interrupts-esc--stop)) |
