@@ -168,3 +168,28 @@ test('tools map to poses as the daemon maps them', () => {
   expect(activityForTool('mcp__github__create_issue')).toBe('writing')
   expect(activityForTool('Agent')).toBe('thinking')
 })
+
+test('where no surface seats the pane, /clawdbox says why and Clawd goes on the status line', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'clawdbox' } }))
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  on('ui.open', () => ({ value: { isPlaced: false, reason: 'the attached surfaces place no panes' } }))
+  on('ui.panes', () => ({ value: [{ id: 'clawdbox', title: 'Clawdbox', isShown: false, isFocused: false, isPlaced: false }] }))
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push((e as { text?: string }).text)
+    return { value: undefined }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  const r = await $.command.run({
+    command: 'clawdbox',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(r.text).toContain('the attached surfaces place no panes')
+  expect(r.text).toContain('mobile')
+  expect(statuses).toContain('Clawd: hello!')
+})

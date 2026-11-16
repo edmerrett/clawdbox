@@ -78,6 +78,7 @@ async function tick($: EngineInterface) {
   if (name !== lastShown) {
     lastShown = name
     $.ui.invalidate('ui.render')
+    await mirror($, name)
   } else if (mounted) {
     const size = mounted
     try {
@@ -91,6 +92,20 @@ async function tick($: EngineInterface) {
   let wait = mounted ? at.untilNext : 60_000
   if (due !== undefined) wait = Math.min(wait, due - now)
   schedule($, wait)
+}
+
+/**
+ * Where no surface can seat the pane (an app that places none, a terminal too narrow), Clawd's
+ * state goes on the status line instead, so it is never invisible; a placed pane clears it.
+ */
+async function mirror($: EngineInterface, name: Shown) {
+  try {
+    const panes = await $.ui.panes()
+    const isPlaced = panes.some(p => p.id === PANE && p.isPlaced)
+    $.ui.status(isPlaced ? undefined : `Clawd: ${CAPTION[name]}`)
+  } catch {
+    // nowhere to show a status line either (a -p run): nothing to mirror
+  }
 }
 
 function schedule($: EngineInterface, ms: number) {
@@ -115,10 +130,26 @@ export const register: Register = on => {
       await $.ui.close({ id: PANE })
       return { text: 'Clawdbox closed. /clawdbox brings it back.' }
     }
-    const { isPlaced } = await $.ui.open({ id: PANE, title: TITLE, columns: COLUMNS })
+    const opened = await $.ui.open({ id: PANE, title: TITLE, columns: COLUMNS })
+    lastShown = undefined // redraw, and recheck the status-line fallback
     void tick($)
+    if (opened.isPlaced) return { text: 'Clawdbox is open.' }
+    const surfaces = await $.session.surfaces()
+    const where = surfaces.length ? surfaces.join(', ') : 'none attached'
 
-    return { text: isPlaced ? 'Clawdbox is open.' : 'Clawdbox opens once the window has room for it.' }
+    return {
+      text:
+        `Clawdbox is open but not drawn yet: ${opened.reason}. ` +
+        `Surfaces: ${where}. Meanwhile Clawd's state is on the status line.`,
+    }
+  })
+
+  // A client attached (a phone, the desktop app): it may seat the pane, so look again.
+  on('session.attach', async ($, e, next) => {
+    const r = await next(e)
+    lastShown = undefined
+    void tick($)
+    return r
   })
 
   // A turn of the main loop: thinking (or ultrathink), a heart if you said thanks.
