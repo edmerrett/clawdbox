@@ -8,3 +8,5 @@ dist/
 __pycache__/
 menubar/build/
 .ruff_cache/
+# written by Claude Code when it loads the mod
+mod/.claude-plugin/types/
