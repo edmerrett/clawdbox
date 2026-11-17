@@ -84,13 +84,15 @@ thirteen until you release it), **Restart Daemon**, **Show Logs** and, when a re
 
 The digital Divoom can also sit **inside Claude Code**, in a pane on the right of the chat, as a
 [Claude Code mod](mod/README.md). It needs no panel, daemon or Mac: Clawd acts out that session straight from
-Claude Code's own events, so it works in the terminal (fullscreen), the desktop app, VS Code and mobile.
+Claude Code's own events, in the terminal (fullscreen), the desktop app, VS Code and mobile. Install it from the
+prompt of a terminal session:
 
-```bash
-claude --plugin-dir ~/Tools/clawdbox/mod
+```
+/plugin install clawdbox --marketplace edmerrett/clawdbox
 ```
 
-`/clawdbox` opens it and `/clawdbox close` hides it. [How the mod works →](mod/README.md)
+Answer `y` to add the marketplace, then pick a scope (user installs it for every session). `/clawdbox` opens the
+pane and `/clawdbox close` hides it. [Other ways to install, and how the mod works →](mod/README.md)
 
 ## Updates
 

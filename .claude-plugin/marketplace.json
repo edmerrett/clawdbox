@@ -1,0 +1,16 @@
+{
+  "name": "clawdbox",
+  "owner": { "name": "edmerrett", "url": "https://github.com/edmerrett" },
+  "metadata": {
+    "description": "Clawd, the Claude Code mascot, on a little digital Divoom beside the chat"
+  },
+  "plugins": [
+    {
+      "name": "clawdbox",
+      "source": "./mod",
+      "description": "Clawd on a little digital Divoom in a pane beside the chat, acting out what Claude is doing",
+      "homepage": "https://github.com/edmerrett/clawdbox/tree/main/mod",
+      "license": "MIT"
+    }
+  ]
+}

@@ -12,14 +12,31 @@ Clawd acting out whatever Claude is doing in that session. It plays the same thi
 
 ## Install
 
-Point Claude Code at this folder:
+At the prompt of a terminal session:
+
+```
+/plugin install clawdbox --marketplace edmerrett/clawdbox
+```
+
+Answer `y` to add the marketplace (`github:edmerrett/clawdbox`), then choose a scope: user installs it for every
+session. It is active at once, with no restart. From a shell instead:
+
+```bash
+claude plugin install clawdbox --marketplace edmerrett/clawdbox
+```
+
+In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with
+`edmerrett/clawdbox`, then Add plugin. A mod installed from a terminal at the user scope loads in the desktop app's
+local sessions too.
+
+The pane opens when an interactive session starts. `/clawdbox` opens it again and `/clawdbox close` hides it. When
+there is nowhere to draw it, `/clawdbox` says why, and Clawd's state shows on the status line meanwhile.
+
+To run it from a checkout while working on it, point Claude Code at the folder instead:
 
 ```bash
 claude --plugin-dir ~/Tools/clawdbox/mod
 ```
-
-or set `CLAUDE_CODE_PLUGIN_DIRS` to it for every session. The pane opens when an interactive session starts.
-`/clawdbox` opens it again and `/clawdbox close` hides it.
 
 ## What Clawd does
 
