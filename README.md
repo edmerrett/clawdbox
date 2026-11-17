@@ -80,6 +80,20 @@ thirteen until you release it), **Restart Daemon**, **Show Logs** and, when a re
 
 <br clear="right">
 
+## In Claude Code
+
+The digital Divoom can also sit **inside Claude Code**, in a pane on the right of the chat, as a
+[Claude Code mod](mod/README.md). It needs no panel, daemon or Mac: Clawd acts out that session straight from
+Claude Code's own events, in the terminal (fullscreen), the desktop app, VS Code and mobile. Install it from the
+prompt of a terminal session:
+
+```
+/plugin install clawdbox --marketplace edmerrett/clawdbox
+```
+
+Answer `y` to add the marketplace, then pick a scope (user installs it for every session). `/clawdbox` opens the
+pane and `/clawdbox close` hides it. [Other ways to install, and how the mod works →](mod/README.md)
+
 ## Updates
 
 Releases install themselves. Every six hours a background updater looks for a new signed release. It installs it,
@@ -139,7 +153,7 @@ and Dependabot. [Full details →](SECURITY.md)
 ## More
 
 - [Hardware and protocols](docs/HARDWARE.md): the two Evos, BLE modes, prior art, phone interference
-- [States and triggers](docs/STATES.md) · [Install and daemon options](docs/INSTALL.md) · [Art](art/README.md)
+- [The Claude Code mod](mod/README.md) · [States and triggers](docs/STATES.md) · [Install and daemon options](docs/INSTALL.md) · [Art](art/README.md)
 - [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 - The BLE protocol is [divoom-protocol](https://github.com/orionparrott/divoom-protocol)'s work; the Classic protocol follows
   [RomRider](https://github.com/RomRider/node-divoom-timebox-evo) and [hass-divoom](https://github.com/d03n3rfr1tz3/hass-divoom).

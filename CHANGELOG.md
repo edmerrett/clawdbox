@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Clawdbox for Claude Code** (`mod/`): the menu bar's digital Divoom as a Claude Code mod, in a pane on the right
+  of the chat. Clawd follows the session from Claude Code's own events, with the daemon's rules and the same thirteen
+  animations, and needs no panel, daemon or Mac. In the terminal it is a Raster repainted frame by frame; in the
+  desktop app, VS Code and mobile it is an animated SVG of the TimeBox. Install it with
+  `/plugin install clawdbox --marketplace edmerrett/clawdbox` (the repository is now a Claude Code marketplace,
+  `.claude-plugin/marketplace.json`), then `/clawdbox` opens it and `/clawdbox close` hides it.
+- `npm run mod:sprites` regenerates the mod's sprites from `art/anims`, and `npm test` checks they are in sync.
+
 ## 0.4.8
 
 ### Changed

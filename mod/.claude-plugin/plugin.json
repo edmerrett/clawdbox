@@ -1,0 +1,13 @@
+{
+  "name": "clawdbox",
+  "version": "0.1.0",
+  "description": "Clawd on a little digital Divoom in a pane beside the chat, acting out what Claude is doing",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "edmerrett",
+    "url": "https://github.com/edmerrett"
+  },
+  "homepage": "https://github.com/edmerrett/clawdbox",
+  "license": "MIT",
+  "icon": "./.claude-plugin/icon.png"
+}

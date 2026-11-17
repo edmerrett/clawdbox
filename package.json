@@ -21,7 +21,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" web/index.html",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" web/index.html",
     "prepublishOnly": "npm run lint && npm test && npm run build",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "mod:sprites": "tsx src/tools/build-mod-sprites.ts"
   },
   "dependencies": {
     "pngjs": "^7.0.0"
