@@ -87,6 +87,8 @@ export class BleDisplay implements Display {
   private everConnected = false;
   private preloading = false;
   private preloaded = false;
+  /** The set changed while a preload was running: run another when it ends. */
+  private preloadAgain = false;
   private readonly log: (m: string) => void;
   private readonly debug: (m: string) => void;
   private readonly requestTimeoutMs: number;
@@ -99,8 +101,15 @@ export class BleDisplay implements Display {
   }
 
   prepare(anims: Record<State, Anim>): void {
+    const replacing = this.anims !== null;
     this.anims = anims;
     for (const [s, a] of Object.entries(anims)) this.debug(`prepared ${s}: ${a.frames.length} frames`);
+    // slots hold copies of the old set (themes toggled): load the new one into them
+    if (replacing && this.opts.mode === 'slots' && this.connected) {
+      this.preloaded = false;
+      if (this.preloading) this.preloadAgain = true;
+      else this.preloadSlots(false);
+    }
   }
 
   private start(): void {
@@ -205,13 +214,18 @@ export class BleDisplay implements Display {
     const anims = Object.entries(this.anims).map(([name, a]) => ({ name, frames: a.frames.map((f) => ({ ms: f.ms, pixels: f.pixels })) }));
     this.request({ op: 'preload', anims }, PRELOAD_TIMEOUT_MS)
       .then((r) => {
-        this.preloaded = true;
+        this.preloaded = !this.preloadAgain; // a stale set is not ready
         this.log(`preloaded slots: ${JSON.stringify(r.slots)}`);
         if (wasDrop) this.onReconnect?.();
       })
       .catch((e) => this.log(`preload failed: ${(e as Error).message}`))
       .finally(() => {
         this.preloading = false;
+        if (this.preloadAgain) {
+          this.preloadAgain = false;
+          this.preloaded = false;
+          this.preloadSlots(wasDrop);
+        }
       });
   }
 

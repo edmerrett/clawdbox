@@ -90,6 +90,20 @@ jobs:
           test -s shots/digital-divoom.png
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
+          grep -q '^themes: off' check2.txt
+          echo "--- Enable Themes: the Christmas tree replaces the standard idle view"
+          curl -sf -X POST 'http://127.0.0.1:7676/themes?enabled=1' >/dev/null
+          curl -sf -X POST http://127.0.0.1:7676/show/idle >/dev/null
+          sleep 2
+          "$APP" --check --snapshot shots/digital-divoom-christmas.png | tee check-themes.txt
+          grep -q '^themes: on (christmas)' check-themes.txt
+          grep -q '^state: idle' check-themes.txt
+          grep -q '^anims: 13 (idle: 8 frames)' check-themes.txt
+          python3 test/panel-ascii.py shots/digital-divoom-christmas.png --require-lit
+          curl -sf -X POST 'http://127.0.0.1:7676/themes?enabled=0' >/dev/null
+          "$APP" --check | grep -q '^themes: off'
+          curl -sf -X POST http://127.0.0.1:7676/show/reading >/dev/null
+          sleep 2
           echo "--- launch the real menu bar app and read its status item"
           # --open-menu clicks the icon; CLAWDBOX_PANEL_LOG logs each frame the digital Divoom draws.
           CLAWDBOX_PANEL_LOG=1 "$APP" --no-daemon --open-menu >/dev/null 2>panel.log &

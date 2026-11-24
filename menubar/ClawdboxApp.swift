@@ -34,6 +34,14 @@ struct DaemonState: Decodable {
         let updateAvailable: Bool
         let error: String?
     }
+    /// Seasonal themes (older daemons do not send this).
+    struct Themes: Decodable {
+        let enabled: Bool
+        /// The theme on the panel while enabled, e.g. "christmas"; nil while off.
+        let theme: String?
+        /// The theme that Enable Themes turns on, e.g. "Christmas".
+        let label: String?
+    }
     let current: String
     let pending: String
     let forced: String?
@@ -44,6 +52,7 @@ struct DaemonState: Decodable {
     let device: Device
     let uptimeSec: Int
     let update: Update?
+    let themes: Themes?
 }
 
 /// The clawdbox checkout, read from the daemon's launchd plist (WorkingDirectory) that
@@ -466,6 +475,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let panel = PanelView()
     private var fetchingAnims = false
     private var animsUptime = Int.max
+    /// The theme the loaded sprites were drawn with ("" for none): a different one means reload them.
+    private var animsTheme: String?
     private var lastState: DaemonState?
     private var reachable = false
 
@@ -479,6 +490,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let checkUpdatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
     private let forceMenu = NSMenu()
     private let releaseItem = NSMenuItem(title: "Release (follow hooks)", action: #selector(releaseForce), keyEquivalent: "")
+    /// Seasonal art in place of the standard idle view; a checkmark while on.
+    private let themesItem = NSMenuItem(title: "Enable Themes", action: #selector(toggleThemes), keyEquivalent: "")
     /// A one-off update line ("Checking…", "Update installed…"), shown until the menu has been seen with it.
     private var updateNote: String?
     private var updateNoteSeen = false
@@ -549,6 +562,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         force.submenu = forceMenu
         menu.addItem(force)
 
+        themesItem.target = self
+        menu.addItem(themesItem)
+
         let restart = NSMenuItem(title: "Restart Daemon", action: #selector(restartDaemon), keyEquivalent: "r")
         restart.target = self
         menu.addItem(restart)
@@ -603,9 +619,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Load the sprites once, and again after the daemon restarts (they may have been rebuilt).
-    private func loadAnimsIfNeeded(uptime: Int) {
-        guard !fetchingAnims, panel.anims.isEmpty || uptime < animsUptime else { return }
+    /// Load the sprites once, and again after the daemon restarts (they may have been rebuilt)
+    /// or switches theme (the idle loop is different).
+    private func loadAnimsIfNeeded(uptime: Int, theme: String) {
+        guard !fetchingAnims, panel.anims.isEmpty || uptime < animsUptime || theme != animsTheme else { return }
         fetchingAnims = true
         var request = URLRequest(url: daemonBase.appendingPathComponent("anims"))
         request.timeoutInterval = 3
@@ -614,7 +631,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.fetchingAnims = false
-                if !anims.isEmpty { self.panel.anims = anims }
+                if !anims.isEmpty {
+                    self.panel.anims = anims
+                    self.animsTheme = theme
+                }
             }
         }.resume()
     }
@@ -631,7 +651,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.reachable = true
                     self.lastState = state
                     self.noticeVersion(state)
-                    self.loadAnimsIfNeeded(uptime: state.uptimeSec)
+                    self.loadAnimsIfNeeded(uptime: state.uptimeSec, theme: state.themes?.theme ?? "")
                     self.animsUptime = state.uptimeSec
                 } else {
                     self.reachable = false
@@ -677,6 +697,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         releaseItem.title = forced.map { "Release \($0) (follow hooks)" } ?? "Release (follow hooks)"
         releaseItem.isHidden = forced == nil
         forceMenu.items.first(where: { $0.isSeparatorItem })?.isHidden = forced == nil
+
+        // Enable Themes: ticked while on.
+        let themes = reachable ? lastState?.themes : nil
+        themesItem.state = themes?.enabled == true ? .on : .off
+        themesItem.toolTip = "Seasonal art (\(themes?.label ?? "Christmas")) in place of the standard idle view"
     }
 
     // MARK: actions
@@ -694,6 +719,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         var url = URLComponents(url: daemonBase.appendingPathComponent("show/\(state)"), resolvingAgainstBaseURL: false)!
         url.queryItems = [URLQueryItem(name: "hold", value: "1")]
+        post(url.url!)
+    }
+
+    /// Turn seasonal themes on or off; the daemon remembers the choice across restarts and updates.
+    @objc private func toggleThemes() {
+        // nothing to tell while the daemon is away, or too old to know themes
+        guard reachable, let themes = lastState?.themes else { return }
+        let on = !themes.enabled
+        var url = URLComponents(url: daemonBase.appendingPathComponent("themes"), resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "enabled", value: on ? "1" : "0")]
         post(url.url!)
     }
 
@@ -899,6 +934,7 @@ if CommandLine.arguments.contains("--check") {
         print(r.sessions)
         if let v = r.version { print(v) }
         if let u = r.update { print(u) }
+        if let t = state.themes { print("themes: \(t.enabled ? "on (\(t.theme ?? "?"))" : "off")") }
         // The digital Divoom: the sprites it plays, and optionally a PNG of it (`--snapshot <file>`).
         var anims: [String: [PanelFrame]] = [:]
         if case .success(let data) = fetchSync("anims") { anims = decodeAnims(data) }

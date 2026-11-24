@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { startServers, parseHookEvent, hostAllowed } from '../src/daemon/server.js';
 import { clawdSprites } from '../src/anim/clawd.js';
+import { THEMES, withTheme } from '../src/anim/themes.js';
 import { HookEvent } from '../src/daemon/reducer.js';
 import { State } from '../src/anim/types.js';
 
@@ -14,6 +15,7 @@ const events: HookEvent[] = [];
 const forced: [State, boolean | undefined][] = [];
 let releases = 0;
 let updateChecks = 0;
+const themeCalls: boolean[] = [];
 const socketPath = join(mkdtempSync(join(tmpdir(), 'clawdbox-sock-')), 'hook.sock');
 const servers = await startServers(
   { port: 0, host: '127.0.0.1', socketPath, tcpEvents: false, log: () => {} },
@@ -22,6 +24,10 @@ const servers = await startServers(
     onForce: (s, hold) => forced.push([s, hold]),
     onRelease: () => releases++,
     checkUpdates: async () => ({ updateAvailable: false, checks: ++updateChecks }),
+    setThemes: (enabled) => {
+      themeCalls.push(enabled);
+      return { enabled, theme: enabled ? 'christmas' : null };
+    },
     status: () => ({ current: 'idle' }),
     anims: () => clawdSprites(),
     previewHtmlPath: new URL('../web/index.html', import.meta.url).pathname,
@@ -123,6 +129,44 @@ test('/show validates the state; /state, /anims and / serve with security header
   assert.equal((await fetch(base + '/nothing')).status, 404);
 });
 
+test('/themes turns themes on and off, validates its flag and refuses cross-origin', async () => {
+  assert.deepEqual(await (await post('/themes?enabled=1', '')).json(), { enabled: true, theme: 'christmas' });
+  assert.deepEqual(await (await post('/themes?enabled=0', '')).json(), { enabled: false, theme: null });
+  assert.equal((await post('/themes?enabled=yes', '')).status, 400);
+  assert.equal((await post('/themes', '')).status, 400);
+  assert.equal((await post('/themes?enabled=1', '', { origin: 'https://evil.example' })).status, 403);
+  assert.equal((await fetch(base + '/themes?enabled=1')).status, 404, 'GET does not toggle');
+  assert.deepEqual(themeCalls, [true, false]);
+});
+
+test('/anims follows a swapped animation set', async () => {
+  let set = clawdSprites();
+  const s3 = await startServers(
+    { port: 0, host: '127.0.0.1', log: () => {} },
+    {
+      onEvent: () => {},
+      onForce: () => {},
+      onRelease: () => {},
+      checkUpdates: async () => ({}),
+      setThemes: () => ({}),
+      status: () => ({}),
+      anims: () => set,
+      previewHtmlPath: '/dev/null',
+    },
+  );
+  try {
+    const p3 = (s3.tcp.address() as AddressInfo).port;
+    const get = async () => (await (await fetch(`http://127.0.0.1:${p3}/anims`)).json()) as Record<string, { frames: unknown[] }>;
+    const before = await get();
+    set = withTheme(set, THEMES.christmas);
+    const after = await get();
+    assert.notEqual(after.idle.frames.length, before.idle.frames.length);
+    assert.deepEqual(after.running, before.running);
+  } finally {
+    s3.close();
+  }
+});
+
 test('oversize bodies get 413 when TCP events are enabled', async () => {
   const s2 = await startServers(
     { port: 0, host: '127.0.0.1', tcpEvents: true, log: () => {} },
@@ -131,6 +175,7 @@ test('oversize bodies get 413 when TCP events are enabled', async () => {
       onForce: () => {},
       onRelease: () => {},
       checkUpdates: async () => ({}),
+      setThemes: () => ({}),
       status: () => ({}),
       anims: () => clawdSprites(),
       previewHtmlPath: '/dev/null',

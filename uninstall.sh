@@ -8,6 +8,7 @@ launchctl bootout "gui/$UID_/com.clawdbox.daemon" 2>/dev/null || true
 launchctl bootout "gui/$UID_/com.clawdbox.update" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/com.clawdbox.daemon.plist" "$HOME/Library/LaunchAgents/com.clawdbox.update.plist"
 rm -f "$HOME/Library/Application Support/clawdbox/daemon.json"
+rm -f "$HOME/Library/Application Support/clawdbox/settings.json"
 pkill -x Clawdbox 2>/dev/null || true
 pkill -f "$PWD/dist/cli.js daemon" 2>/dev/null || true
 pkill -f "$PWD/bridge/clawdbox_ble.py" 2>/dev/null || true
