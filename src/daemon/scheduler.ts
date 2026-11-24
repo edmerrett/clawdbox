@@ -51,7 +51,16 @@ export class Scheduler {
   private flashState: FlashState | null = null;
   private flashUntil = 0;
 
-  constructor(private readonly opts: SchedulerOptions) {}
+  private loopMs: Record<State, number>;
+
+  constructor(private readonly opts: SchedulerOptions) {
+    this.loopMs = opts.loopMs;
+  }
+
+  /** The animations changed (themes toggled): use their loop lengths for boundaries. */
+  setLoopMs(loopMs: Record<State, number>): void {
+    this.loopMs = loopMs;
+  }
 
   /** The reducer's aggregate changed (or an event arrived). */
   setTarget(state: ActivityState, now: number): void {
@@ -105,7 +114,7 @@ export class Scheduler {
     if (held < this.opts.minHoldMs) return null;
 
     // Prefer a loop boundary, but not forever.
-    const loop = this.opts.loopMs[this.current] || 0;
+    const loop = this.loopMs[this.current] || 0;
     if (loop > 0) {
       const intoLoop = held % loop;
       const untilBoundary = loop - intoLoop;

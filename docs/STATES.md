@@ -16,6 +16,9 @@
 | `error` | crying Clawd | `PostToolUseFailure` (not interrupts), `StopFailure` |
 | `heart` | clawd heart | your prompt says thanks |
 
+With **Enable Themes** on (menu bar, or `clawdbox themes on`), `idle` is drawn by the active theme instead: Clawd in a
+Santa hat beside a Christmas tree (`src/anim/themes.ts`). Only the art changes, never the triggers above.
+
 Flashes (`wave`, `done`, `error`, `heart`) last 3.5 s and jump the hold; `needs-you` jumps it too. Events from
 subagents are ignored so Clawd doesn't flicker. With several sessions open, the most urgent state wins
 (`needs-you` > `running` > `writing` > `reading` > `thinking` > `idle`).

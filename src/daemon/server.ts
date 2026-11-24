@@ -12,6 +12,7 @@
  *        ?hold=1         ...or until released, whatever the hooks say
  *   POST /release        release a forced state; the panel follows the hooks again
  *   POST /update-check   look for a newer release now -> the update part of /state
+ *   POST /themes?enabled=1|0  turn seasonal themes on or off (saved across restarts) -> {enabled, theme}
  *   GET  /               previewer page
  *   POST /event          only when `tcpEvents` is enabled (Claude Code's native http hooks)
  *
@@ -30,6 +31,8 @@ export interface ServerDeps {
   onForce(state: State, hold?: boolean): void;
   onRelease(): void;
   checkUpdates(): Promise<unknown>;
+  /** Turn themes on or off; returns what /state reports under `themes`. */
+  setThemes(enabled: boolean): unknown;
   status(): unknown;
   anims(): Record<State, Anim>;
   previewHtmlPath: string;
@@ -137,7 +140,8 @@ export interface Servers {
 }
 
 export async function startServers(opts: ServerOptions, deps: ServerDeps): Promise<Servers> {
-  let animsJson: string | null = null;
+  /** /anims is cached per animation set (enabling themes swaps the set). */
+  let animsJson: { for: Record<State, Anim>; json: string } | null = null;
   let boundPort = opts.port;
 
   const handler = (viaSocket: boolean) => async (req: IncomingMessage, res: ServerResponse) => {
@@ -172,8 +176,11 @@ export async function startServers(opts: ServerOptions, deps: ServerDeps): Promi
       }
       if (req.method === 'GET' && url.pathname === '/state') return json(res, 200, deps.status());
       if (req.method === 'GET' && url.pathname === '/anims') {
-        animsJson ??= JSON.stringify(Object.fromEntries(Object.entries(deps.anims()).map(([k, a]) => [k, toAnimFile(a)])));
-        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(animsJson);
+        const set = deps.anims();
+        if (animsJson?.for !== set) {
+          animsJson = { for: set, json: JSON.stringify(Object.fromEntries(Object.entries(set).map(([k, a]) => [k, toAnimFile(a)]))) };
+        }
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(animsJson.json);
         return;
       }
       if (req.method === 'POST' && url.pathname.startsWith('/show/')) {
@@ -186,6 +193,11 @@ export async function startServers(opts: ServerOptions, deps: ServerDeps): Promi
       if (req.method === 'POST' && url.pathname === '/release') {
         deps.onRelease();
         return json(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && url.pathname === '/themes') {
+        const v = url.searchParams.get('enabled');
+        if (v !== '1' && v !== '0') return json(res, 400, { error: 'enabled must be 1 or 0' });
+        return json(res, 200, deps.setThemes(v === '1'));
       }
       if (req.method === 'POST' && url.pathname === '/update-check') return json(res, 200, await deps.checkUpdates());
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {

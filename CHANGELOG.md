@@ -1,8 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 ### Added
+- **Enable Themes** in the menu bar menu: seasonal art in place of the standard idle view. The first theme is
+  Christmas: Clawd in a Santa hat beside a Christmas tree with twinkling fairy lights, a star and a present, while
+  snow falls. Only `idle` changes; every other state, and when Clawd switches, stays the same. The panel and the
+  menu's digital Divoom switch at once, and the choice is saved (`settings.json` in Clawdbox's Application Support
+  folder) so it survives restarts and updates. Also `clawdbox themes on|off`, and `POST /themes?enabled=1|0`; `/state`
+  reports `themes`.
 - **Clawdbox for Claude Code** (`mod/`): the menu bar's digital Divoom as a Claude Code mod, in a pane on the right
   of the chat. Clawd follows the session from Claude Code's own events, with the daemon's rules and the same thirteen
   animations, and needs no panel, daemon or Mac. In the terminal it is a Raster repainted frame by frame; in the

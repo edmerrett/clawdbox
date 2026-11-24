@@ -14,6 +14,8 @@ import { DEFAULT_SCHEDULER, Scheduler } from './scheduler.js';
 import { startServers } from './server.js';
 import { UpdateChecker } from './update-check.js';
 import { readFileSync } from 'node:fs';
+import { activeTheme, withTheme } from '../anim/themes.js';
+import { defaultSettingsPath, loadSettings, saveSettings } from './settings.js';
 
 export interface DaemonConfig {
   /** Unix socket that receives hook events (default ~/Library/Application Support/clawdbox/hook.sock). */
@@ -45,6 +47,8 @@ export interface DaemonConfig {
   idleStageAfterMs: number;
   idleStageCycleMs: number;
   sessionTtlMs: number;
+  /** Where runtime settings (themes on/off) are kept (default ~/Library/Application Support/clawdbox/settings.json). */
+  settingsPath?: string;
   /** Check origin/main for updates (every 6 h) and report it in /state. */
   updateCheck: boolean;
   verbose: boolean;
@@ -101,14 +105,21 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
   const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
   const debug = cfg.verbose ? log : () => {};
 
-  let anims: Record<State, Anim>;
+  let base: Record<State, Anim>;
   if (cfg.animsDir) {
-    anims = loadAnimSet(cfg.animsDir);
+    base = loadAnimSet(cfg.animsDir);
     log(`loaded animations from ${cfg.animsDir}`);
   } else {
-    anims = clawdSprites();
+    base = clawdSprites();
     log('using built-in Clawd sprites (pass --anims <dir> for your own)');
   }
+  const settingsPath = cfg.settingsPath ?? defaultSettingsPath();
+  const settings = loadSettings(settingsPath);
+  /** What the panel plays: the base set, with the active theme laid over it while themes are on. */
+  const themed = () => withTheme(base, settings.themes ? activeTheme() : null);
+  let anims = themed();
+  if (settings.themes) log(`themes on: ${activeTheme().label}`);
+  const loops = () => Object.fromEntries(Object.entries(anims).map(([k, a]) => [k, loopMs(a)])) as Record<State, number>;
 
   const panelDown = downtimeTracker();
   let device: Display;
@@ -148,8 +159,29 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     flashMs: cfg.flashMs,
     idleStageAfterMs: cfg.idleStageAfterMs,
     idleStageCycleMs: cfg.idleStageCycleMs,
-    loopMs: Object.fromEntries(Object.entries(anims).map(([k, a]) => [k, loopMs(a)])) as Record<State, number>,
+    loopMs: loops(),
   });
+  /** Push the current state again (its art changed) at the next tick. */
+  let reshow = false;
+  const themesInfo = () => ({ enabled: settings.themes, theme: settings.themes ? activeTheme().name : null, label: activeTheme().label });
+  const setThemes = (enabled: boolean) => {
+    if (enabled !== settings.themes) {
+      settings.themes = enabled;
+      try {
+        saveSettings(settingsPath, settings);
+      } catch (e) {
+        log(`could not save settings to ${settingsPath}: ${(e as Error).message}`);
+      }
+      const before = anims;
+      anims = themed();
+      device.prepare(anims);
+      sched.setLoopMs(loops());
+      // only the state on the panel matters; the rest are picked up when they are next shown
+      if (anims[sched.current] !== before[sched.current]) reshow = true;
+      log(`themes ${enabled ? `on: ${activeTheme().label}` : 'off'}`);
+    }
+    return themesInfo();
+  };
 
   let forced: State | null = null;
   let forcedAt = 0;
@@ -207,6 +239,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
       onForce,
       onRelease,
       checkUpdates: () => updates.check(),
+      setThemes,
       anims: () => anims,
       status: () => ({
         current: sched.current,
@@ -225,6 +258,7 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
         },
         uptimeSec: Math.round(process.uptime()),
         update: updates.info,
+        themes: themesInfo(),
       }),
       previewHtmlPath,
     },
@@ -267,7 +301,9 @@ export async function runDaemon(cfg: DaemonConfig): Promise<void> {
     // Sessions expire, and a quiet `running` one yields to an active one, with time alone; keep the panel in step.
     if (!forced && sched.target !== aggregate(now)) sched.setTarget(aggregate(now), now);
     if (busy) return;
-    const next = sched.tick(now);
+    let next = sched.tick(now);
+    if (!next && reshow) next = sched.current;
+    reshow = false;
     if (!next) return;
     busy = true;
     try {

@@ -73,6 +73,8 @@ Usage:
   clawdbox show <state> [--hold] [--port ${PORT}]       tell a running daemon to show a state until the next hook
                                                      event (--hold: until \`clawdbox release\`)
   clawdbox release [--port ${PORT}]                     drop a forced state; the panel follows the hooks again
+  clawdbox themes on|off [--port ${PORT}]               seasonal art (Christmas) in place of the standard idle view;
+                                                     remembered across restarts (also in the menu bar: Enable Themes)
 
 States: ${STATES.join(', ')}
 `;
@@ -561,6 +563,11 @@ async function main(argv: string[]): Promise<void> {
       return cmdShow(cfg, positionals[1], Boolean(v.hold));
     case 'release':
       return postDaemon(cfg, '/release');
+    case 'themes': {
+      const on = positionals[1];
+      if (on !== 'on' && on !== 'off') throw new UsageError('themes needs on or off');
+      return postDaemon(cfg, `/themes?enabled=${on === 'on' ? 1 : 0}`);
+    }
     default:
       throw new UsageError(`unknown command "${cmd}" (try --help)`);
   }

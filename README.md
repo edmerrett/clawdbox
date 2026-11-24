@@ -76,7 +76,18 @@ A little Clawd sits in the menu bar with the current state beside it:
 Click it and the menu opens on a small **digital Divoom**: the same 16×16 sprites, playing whatever the real panel
 shows, live. Below it are the connection, transport, sessions and version, then **Check for Updates…**,
 **Open Previewer** (the same view in a browser at <http://127.0.0.1:7676>), **Force State** (hold any of the
-thirteen until you release it), **Restart Daemon**, **Show Logs** and, when a release is out, **Install Update…**.
+thirteen until you release it), **Enable Themes**, **Restart Daemon**, **Show Logs** and, when a release is out, **Install Update…**.
+
+<br clear="right">
+
+### Themes
+
+<img src="docs/sprites/christmas.gif" alt="Clawd in a Santa hat beside a twinkling Christmas tree, snow falling" width="128" align="right">
+
+Tick **Enable Themes** in the menu and seasonal art takes over the idle view: for now, Clawd in a Santa hat beside a
+Christmas tree with twinkling fairy lights, a star and a present, while snow falls. Every other state is unchanged,
+and so is when Clawd switches. Untick it for the standard idle. The choice is remembered across restarts and updates,
+and `clawdbox themes on` / `clawdbox themes off` does the same from Terminal.
 
 <br clear="right">
 

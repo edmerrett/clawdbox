@@ -45,8 +45,10 @@ It reads `offline` when the daemon is not running.
 
 Click it and the menu opens on a small digital Divoom playing whatever the panel is showing, live. Below that are
 the connection, transport, sessions and installed version, then Check for Updates…, Open Previewer, Force State,
-Restart Daemon, Show Logs and, when a newer release exists, Install Update…. A state picked under Force State is held
-(ticked) whatever the hooks say, until you pick Release or the same state again. Quit stops the daemon too, until the
+Enable Themes, Restart Daemon, Show Logs and, when a newer release exists, Install Update…. A state picked under Force State is held
+(ticked) whatever the hooks say, until you pick Release or the same state again. Enable Themes (ticked while on) swaps the standard idle view for
+seasonal art, today Clawd in a Santa hat beside a Christmas tree; the daemon remembers it across restarts and updates
+(`clawdbox themes on|off` does the same from Terminal). Quit stops the daemon too, until the
 next login.
 
 `~/Applications/Clawdbox.app/Contents/MacOS/Clawdbox --check` prints what the menu bar would show. Without the Xcode
