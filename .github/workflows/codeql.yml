@@ -11,7 +11,32 @@ concurrency:
   group: codeql-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Docs-only pull requests (Markdown and docs/) skip the steps below. Every job still runs and
+  # reports under its own name, so the required checks pass; pushes to main always run everything.
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(git diff --name-only "$BASE...$HEAD")
+          echo "$files"
+          if grep -qvE '(\.md$|^docs/)' <<<"$files"; then code=true; else code=false; fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
   analyze:
+    needs: changes
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -24,13 +49,16 @@ jobs:
         language: [actions, javascript-typescript, python]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        if: needs.changes.outputs.code == 'true'
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        if: needs.changes.outputs.code == 'true'
         with:
           category: /language:${{ matrix.language }}
