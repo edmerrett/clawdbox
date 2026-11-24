@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2
+
+### Fixed
+- The **Enable Themes** switch turns your accent colour (blue by default) when it is on. The system switch only
+  takes the accent colour in the active window, and a menu bar app's menu never is one, so it stayed grey. Clawdbox
+  now draws the switch itself.
+
 ## 0.5.1
 
 ### Changed

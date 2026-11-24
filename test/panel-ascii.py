@@ -107,4 +107,5 @@ def main():
     return 1 if "--require-lit" in sys.argv and lit == 0 else 0
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())

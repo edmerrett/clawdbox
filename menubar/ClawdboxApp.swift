@@ -496,9 +496,40 @@ func snapshotPanel(_ panel: PanelView, to path: String) -> Bool {
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
 }
 
-/// A menu row with a label and an on/off switch (the menu stays open while it is flipped).
+/// An on/off switch drawn by hand. The system NSSwitch only takes the accent colour while its window
+/// is key, and a menu bar app's menu never is, so in the menu it stayed grey when switched on.
+final class AccentSwitch: NSView {
+    static let size = NSSize(width: 32, height: 19)
+    var isOn = false { didSet { needsDisplay = true } }
+    var isEnabled = true { didSet { needsDisplay = true } }
+
+    override var intrinsicContentSize: NSSize { AccentSwitch.size }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let track = NSRect(origin: .zero, size: AccentSwitch.size).insetBy(dx: 0.5, dy: 0.5)
+        let alpha: CGFloat = isEnabled ? 1 : 0.4
+        let fill = isOn ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
+        fill.withAlphaComponent((isOn ? 1 : 0.3) * alpha).setFill()
+        let radius = track.height / 2
+        NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
+        let d = track.height - 4
+        let knob = NSRect(x: isOn ? track.maxX - d - 2 : track.minX + 2, y: track.minY + 2, width: d, height: d)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25 * alpha)
+        shadow.shadowBlurRadius = 1.5
+        shadow.shadowOffset = NSSize(width: 0, height: -0.5)
+        shadow.set()
+        NSColor.white.withAlphaComponent(isEnabled ? 1 : 0.7).setFill()
+        NSBezierPath(ovalIn: knob).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
+/// A menu row with a label and an on/off switch. A click anywhere on the row flips it, and the menu
+/// stays open, so the change shows straight away.
 final class SwitchRow: NSView {
-    let toggle = NSSwitch()
+    let toggle = AccentSwitch()
     private let label: NSTextField
     var onChange: ((Bool) -> Void)?
 
@@ -509,11 +540,7 @@ final class SwitchRow: NSView {
         label.font = NSFont.menuFont(ofSize: 0)
         label.textColor = .labelColor
         label.translatesAutoresizingMaskIntoConstraints = false
-        toggle.controlSize = .small
-        toggle.target = self
-        toggle.action = #selector(flipped)
         toggle.translatesAutoresizingMaskIntoConstraints = false
-        toggle.setAccessibilityLabel(title)
         addSubview(label)
         addSubview(toggle)
         NSLayoutConstraint.activate([
@@ -522,14 +549,22 @@ final class SwitchRow: NSView {
             toggle.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
             toggle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             toggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            toggle.widthAnchor.constraint(equalToConstant: AccentSwitch.size.width),
+            toggle.heightAnchor.constraint(equalToConstant: AccentSwitch.size.height),
         ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel(title)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     var isOn: Bool {
-        get { toggle.state == .on }
-        set { toggle.state = newValue ? .on : .off }
+        get { toggle.isOn }
+        set {
+            toggle.isOn = newValue
+            setAccessibilityValue(newValue)
+        }
     }
 
     var isEnabled: Bool {
@@ -540,17 +575,33 @@ final class SwitchRow: NSView {
         }
     }
 
-    @objc private func flipped() { onChange?(isOn) }
+    override func accessibilityPerformPress() -> Bool {
+        flip()
+        return true
+    }
+
+    private func flip() {
+        guard isEnabled else { return }
+        isOn.toggle()
+        onChange?(isOn)
+    }
 
     /// Take the press, so the click lands here (and the menu stays open) rather than going up the chain.
     override func mouseDown(with event: NSEvent) {}
 
-    /// A click on the row beside the switch (the label) flips it too; the switch handles its own clicks.
     override func mouseUp(with event: NSEvent) {
-        guard isEnabled, !toggle.frame.contains(convert(event.locationInWindow, from: nil)) else { return }
-        isOn.toggle()
-        flipped()
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        flip()
     }
+}
+
+/// Draw a view to a PNG (CI checks what it looks like without opening a menu).
+func snapshotView(_ view: NSView, to path: String) -> Bool {
+    view.layoutSubtreeIfNeeded()
+    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+    view.cacheDisplay(in: view.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
 }
 
 // MARK: - App
@@ -1037,6 +1088,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showLogs() {
         NSWorkspace.shared.open(logsDir.appendingPathComponent("clawdbox.log"))
     }
+}
+
+// `Clawdbox --snapshot-switch <file> [off]`: draw the Enable Themes row to a PNG and exit (CI checks its colour).
+if let i = CommandLine.arguments.firstIndex(of: "--snapshot-switch"), i + 1 < CommandLine.arguments.count {
+    _ = NSApplication.shared
+    let row = SwitchRow(title: "Enable Themes")
+    row.frame = NSRect(x: 0, y: 0, width: 240, height: 30)
+    row.isOn = !CommandLine.arguments.contains("off")
+    let path = CommandLine.arguments[i + 1]
+    let ok = snapshotView(row, to: path)
+    print("switch snapshot (\(row.isOn ? "on" : "off")): \(ok ? path : "failed")")
+    exit(ok ? 0 : 1)
 }
 
 // `Clawdbox --check`: print what the menu bar would show and exit (used by CI and for debugging).
