@@ -218,6 +218,36 @@ let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCo
 let logsDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/clawdbox")
 let updateLog = logsDir.appendingPathComponent("update.log")
 
+// MARK: - Relaunch after an update
+
+/// Which file this process's executable is: inode and modification time. An update replaces the
+/// bundle (menubar/install.sh removes it and copies the new build in), so a different identity at
+/// the same path means a newer build is installed and this process is running the old one.
+func executableIdentity() -> String? {
+    guard let path = Bundle.main.executablePath,
+          let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+          let inode = attrs[.systemFileNumber] as? NSNumber,
+          let modified = attrs[.modificationDate] as? Date else { return nil }
+    return "\(inode)@\(modified.timeIntervalSince1970)"
+}
+let launchedExecutable = executableIdentity()
+
+/// Under the login agent, launchd (KeepAlive) starts the new build as soon as we exit. Otherwise
+/// (opened by hand, or as a login item) nothing would, so ask LaunchServices to open it again.
+func relaunchSelf() {
+    FileHandle.standardError.write("bundle replaced; relaunching the new build\n".data(using: .utf8)!)
+    let underLaunchd = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == launchdLabel
+    if !underLaunchd {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // wait for this process to go, so the new one is not refused as a second instance
+        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; exec /usr/bin/open -g \"$2\"",
+                          "relaunch", String(getpid()), Bundle.main.bundlePath]
+        try? task.run()
+    }
+    NSApp.terminate(nil)
+}
+
 // MARK: - Daemon supervisor
 
 /// Written by `clawdbox install-launchd`: how to start the daemon.
@@ -466,6 +496,63 @@ func snapshotPanel(_ panel: PanelView, to path: String) -> Bool {
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
 }
 
+/// A menu row with a label and an on/off switch (the menu stays open while it is flipped).
+final class SwitchRow: NSView {
+    let toggle = NSSwitch()
+    private let label: NSTextField
+    var onChange: ((Bool) -> Void)?
+
+    init(title: String) {
+        label = NSTextField(labelWithString: title)
+        super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 30))
+        autoresizingMask = [.width]
+        label.font = NSFont.menuFont(ofSize: 0)
+        label.textColor = .labelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        toggle.controlSize = .small
+        toggle.target = self
+        toggle.action = #selector(flipped)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.setAccessibilityLabel(title)
+        addSubview(label)
+        addSubview(toggle)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            toggle.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
+            toggle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            toggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    var isOn: Bool {
+        get { toggle.state == .on }
+        set { toggle.state = newValue ? .on : .off }
+    }
+
+    var isEnabled: Bool {
+        get { toggle.isEnabled }
+        set {
+            toggle.isEnabled = newValue
+            label.textColor = newValue ? .labelColor : .disabledControlTextColor
+        }
+    }
+
+    @objc private func flipped() { onChange?(isOn) }
+
+    /// Take the press, so the click lands here (and the menu stays open) rather than going up the chain.
+    override func mouseDown(with event: NSEvent) {}
+
+    /// A click on the row beside the switch (the label) flips it too; the switch handles its own clicks.
+    override func mouseUp(with event: NSEvent) {
+        guard isEnabled, !toggle.frame.contains(convert(event.locationInWindow, from: nil)) else { return }
+        isOn.toggle()
+        flipped()
+    }
+}
+
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -490,8 +577,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let checkUpdatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
     private let forceMenu = NSMenu()
     private let releaseItem = NSMenuItem(title: "Release (follow hooks)", action: #selector(releaseForce), keyEquivalent: "")
-    /// Seasonal art in place of the standard idle view; a checkmark while on.
-    private let themesItem = NSMenuItem(title: "Enable Themes", action: #selector(toggleThemes), keyEquivalent: "")
+    /// Seasonal art in place of the standard idle view: an on/off switch.
+    private let themesItem = NSMenuItem()
+    private let themesRow = SwitchRow(title: "Enable Themes")
+    /// What the switch was flipped to, until the daemon reports it (so a poll in flight cannot flip it back).
+    private var themesWanted: Bool?
+    /// The executable was replaced at this identity; relaunch once it has stayed the same for a moment.
+    private var replacedBy: String?
     /// A one-off update line ("Checking…", "Update installed…"), shown until the menu has been seen with it.
     private var updateNote: String?
     private var updateNoteSeen = false
@@ -562,7 +654,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         force.submenu = forceMenu
         menu.addItem(force)
 
-        themesItem.target = self
+        themesRow.onChange = { [weak self] on in self?.setThemes(on) }
+        themesItem.view = themesRow
         menu.addItem(themesItem)
 
         let restart = NSMenuItem(title: "Restart Daemon", action: #selector(restartDaemon), keyEquivalent: "r")
@@ -642,6 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: polling
 
     private func refresh() {
+        checkReplaced()
         var request = URLRequest(url: daemonBase.appendingPathComponent("state"))
         request.timeoutInterval = 1.5
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
@@ -698,10 +792,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         releaseItem.isHidden = forced == nil
         forceMenu.items.first(where: { $0.isSeparatorItem })?.isHidden = forced == nil
 
-        // Enable Themes: ticked while on.
+        // Enable Themes: the switch follows the daemon; off and greyed out while it is away (or too old).
         let themes = reachable ? lastState?.themes : nil
-        themesItem.state = themes?.enabled == true ? .on : .off
-        themesItem.toolTip = "Seasonal art (\(themes?.label ?? "Christmas")) in place of the standard idle view"
+        if let wanted = themesWanted, themes?.enabled == wanted || themes == nil { themesWanted = nil }
+        themesRow.isOn = themesWanted ?? (themes?.enabled == true)
+        themesRow.isEnabled = themes != nil
+        themesRow.toolTip = "Seasonal art (\(themes?.label ?? "Christmas")) in place of the standard idle view"
     }
 
     // MARK: actions
@@ -723,10 +819,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Turn seasonal themes on or off; the daemon remembers the choice across restarts and updates.
-    @objc private func toggleThemes() {
+    private func setThemes(_ on: Bool) {
         // nothing to tell while the daemon is away, or too old to know themes
-        guard reachable, let themes = lastState?.themes else { return }
-        let on = !themes.enabled
+        guard reachable, lastState?.themes != nil else {
+            render()
+            return
+        }
+        themesWanted = on
         var url = URLComponents(url: daemonBase.appendingPathComponent("themes"), resolvingAgainstBaseURL: false)!
         url.queryItems = [URLQueryItem(name: "enabled", value: on ? "1" : "0")]
         post(url.url!)
@@ -879,6 +978,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// An update (or menubar/install.sh) replaced this app's bundle: start the new build. Waits until
+    /// the new executable has looked the same on two polls (the copy is finished), until no update is
+    /// running (installFinished relaunches then), and until the menu is closed.
+    private func checkReplaced() {
+        guard let launched = launchedExecutable, let now = executableIdentity(), now != launched else {
+            replacedBy = nil
+            return
+        }
+        defer { replacedBy = now }
+        guard replacedBy == now, installing == nil, openTimer == nil,
+              FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist").path)
+        else { return }
+        relaunchSelf()
+    }
+
     /// Reached when the update did not restart this app: it found nothing to install, failed,
     /// or installed without restarting us (the daemon is restarted here so the new build runs).
     private func installFinished(_ status: Int32) {
@@ -899,6 +1013,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             render()
             post(daemonBase.appendingPathComponent("update-check"))  // drop the stale "update available"
             alert("Nothing to install", "The installed build is already the newest release (\(line)).")
+            return
+        }
+        if status == 0, let now = executableIdentity(), now != launchedExecutable {
+            // the update rebuilt this app but did not restart it: run the new build (it starts the new daemon)
+            relaunchSelf()
             return
         }
         if status == 0 {

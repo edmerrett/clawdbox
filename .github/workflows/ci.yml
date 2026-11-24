@@ -134,6 +134,24 @@ jobs:
           python3 test/panel-ascii.py shots/digital-divoom.png --require-lit
           python3 test/panel-ascii.py shots/menubar-full.png --require-lit
           python3 test/panel-ascii.py shots/menu-open-writing-full.png --require-lit
+          echo "--- an update replaces the app bundle: the running app relaunches the new build"
+          "$APP" --no-daemon >/dev/null 2>relaunch.log &
+          sleep 4
+          OLD=$(pgrep -x Clawdbox)
+          echo "running: $OLD"
+          cp -R menubar/build/Clawdbox.app menubar/build/Clawdbox.new.app
+          rm -rf menubar/build/Clawdbox.app
+          mv menubar/build/Clawdbox.new.app menubar/build/Clawdbox.app
+          for i in $(seq 1 40); do
+            NEW=$(pgrep -x Clawdbox || true)
+            [ -n "$NEW" ] && [ "$NEW" != "$OLD" ] && break
+            sleep 0.5
+          done
+          cat relaunch.log
+          echo "after replacing the bundle: ${NEW:-none}"
+          grep -q 'bundle replaced; relaunching' relaunch.log
+          test -n "$NEW" && test "$NEW" != "$OLD"
+          pkill -x Clawdbox || true
           kill %1; sleep 1
           echo "--- daemon down"
           set +e; "$APP" --check > check3.txt; rc=$?; set -e
@@ -153,3 +171,4 @@ jobs:
             statusitem.txt
             check*.txt
             panel.log
+            relaunch.log
