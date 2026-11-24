@@ -76,7 +76,8 @@ A little Clawd sits in the menu bar with the current state beside it:
 Click it and the menu opens on a small **digital Divoom**: the same 16×16 sprites, playing whatever the real panel
 shows, live. Below it are the connection, transport, sessions and version, then **Check for Updates…**,
 **Open Previewer** (the same view in a browser at <http://127.0.0.1:7676>), **Force State** (hold any of the
-thirteen until you release it), **Enable Themes**, **Restart Daemon**, **Show Logs** and, when a release is out, **Install Update…**.
+thirteen until you release it), the **Enable Themes** switch, **Restart Daemon**, **Show Logs** and, when a release
+is out, **Install Update…**.
 
 <br clear="right">
 
@@ -84,10 +85,12 @@ thirteen until you release it), **Enable Themes**, **Restart Daemon**, **Show Lo
 
 <img src="docs/sprites/christmas.gif" alt="Clawd in a Santa hat beside a twinkling Christmas tree, snow falling" width="128" align="right">
 
-Flip the **Enable Themes** switch in the menu and seasonal art takes over the idle view: for now, Clawd in a Santa hat beside a
-Christmas tree with twinkling fairy lights, a star and a present, while snow falls. Every other state is unchanged,
-and so is when Clawd switches. Switch it off for the standard idle. The choice is remembered across restarts and updates,
-and `clawdbox themes on` / `clawdbox themes off` does the same from Terminal.
+Flip the **Enable Themes** switch in the menu and seasonal art takes over the idle view: for now, Clawd in a Santa
+hat beside a Christmas tree with twinkling fairy lights, a star and a present, while snow falls. The panel, the menu's
+digital Divoom and the previewer change at once; every other state is unchanged, and so is when Clawd switches.
+Switch it off for the standard idle. The choice is remembered across restarts and updates, and
+`clawdbox themes on` / `clawdbox themes off` does the same from Terminal. (The Claude Code mod below always shows the
+standard idle.)
 
 <br clear="right">
 
@@ -108,7 +111,8 @@ pane and `/clawdbox close` hides it. [Other ways to install, and how the mod wor
 ## Updates
 
 Releases install themselves. Every six hours a background updater looks for a new signed release. It installs it,
-rebuilds what changed and restarts Clawdbox. **Check for Updates…** does the same on demand, shows each step in the
+rebuilds what changed and restarts Clawdbox. When a release rebuilds the menu bar app, the running app relaunches
+itself as the new build, so new menu items appear without quitting it. **Check for Updates…** does the same on demand, shows each step in the
 menu, and ends with "Clawdbox updated to x.y.z", "Nothing to install", or the step that failed (the log is
 `~/Library/Logs/clawdbox/update.log`).
 
@@ -129,7 +133,9 @@ built and running. To hack on clawdbox, clone it somewhere else ([Contributing](
 - **Stuck on `connecting…` or `no panel`.** Make sure the box is on and nearby, and that the Divoom phone app is not
   connected to it. Then use **Restart Daemon**. Logs: **Show Logs**.
 - **An update seems to do nothing.** Read the last lines of `~/Library/Logs/clawdbox/update.log`. If the menu shows
-  a different version than you expect, use **Restart Daemon**.
+  a different version than you expect, use **Restart Daemon**. If the version is right but a menu item from the
+  release notes is missing, the app is still the old build: use **Quit Clawdbox**, then open
+  `~/Applications/Clawdbox.app` (0.5.1 and later relaunch themselves, so this should not happen again).
 
 ## How it works
 
@@ -150,7 +156,8 @@ original Evo over Bluetooth Classic. Clawdbox.app owns the Bluetooth permission 
 ## Make it yours
 
 Every sprite is a few lines of ASCII in [`src/anim/clawd.ts`](src/anim/clawd.ts). Or draw your own in Aseprite or
-Piskel and run `clawdbox build-anims`; any state you don't draw falls back to the built-in one.
+Piskel and run `clawdbox build-anims`; any state you don't draw falls back to the built-in one. Themes live in
+[`src/anim/themes.ts`](src/anim/themes.ts): a theme redraws any states it likes and Enable Themes lays it over the rest.
 [Art guide and LED rules →](art/README.md)
 
 ## Security
