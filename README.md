@@ -61,7 +61,7 @@ for Clawd to appear on the panel. macOS asks once whether Clawdbox may use Bluet
 
 ## In the menu bar
 
-<img src="docs/menubar.gif" alt="The Clawdbox menu: a small digital Divoom playing the current animation above the status lines and shortcuts" width="300" align="right">
+<img src="docs/menubar.gif" alt="The Clawdbox menu: a small digital Divoom playing reading, then writing, then idle; the Enable Themes switch turns on and the Christmas tree appears" width="300" align="right">
 
 A little Clawd sits in the menu bar with the current state beside it:
 
