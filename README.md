@@ -84,9 +84,9 @@ thirteen until you release it), **Enable Themes**, **Restart Daemon**, **Show Lo
 
 <img src="docs/sprites/christmas.gif" alt="Clawd in a Santa hat beside a twinkling Christmas tree, snow falling" width="128" align="right">
 
-Tick **Enable Themes** in the menu and seasonal art takes over the idle view: for now, Clawd in a Santa hat beside a
+Flip the **Enable Themes** switch in the menu and seasonal art takes over the idle view: for now, Clawd in a Santa hat beside a
 Christmas tree with twinkling fairy lights, a star and a present, while snow falls. Every other state is unchanged,
-and so is when Clawd switches. Untick it for the standard idle. The choice is remembered across restarts and updates,
+and so is when Clawd switches. Switch it off for the standard idle. The choice is remembered across restarts and updates,
 and `clawdbox themes on` / `clawdbox themes off` does the same from Terminal.
 
 <br clear="right">

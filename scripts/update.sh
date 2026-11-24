@@ -28,6 +28,15 @@ for a in "$@"; do
 done
 say() { echo "[clawdbox update $(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 short() { git rev-parse --short "$1"; }
+# ps's elapsed time ([[dd-]hh:]mm:ss) in seconds; fails on empty input (the process is gone).
+etime_seconds() {
+  local t="${1// /}" d=0 h=0 m s
+  [ -n "$t" ] || return 1
+  case "$t" in *-*) d=${t%%-*}; t=${t#*-};; esac
+  IFS=: read -r a b c <<<"$t"
+  if [ -n "${c:-}" ]; then h=$a; m=$b; s=$c; else m=$a; s=$b; fi
+  echo $(( 10#$d * 86400 + 10#$h * 3600 + 10#$m * 60 + 10#$s ))
+}
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { say "not a git checkout; update by reinstalling the package"; exit 2; }
 git fetch --quiet --tags origin main || { say "could not reach origin"; exit 3; }
@@ -107,7 +116,7 @@ if [ -x .venv/bin/pip ] && { [ "$FORCE" = 1 ] || grep -q '^bridge/requirements.t
 fi
 if [ -x "$HOME/Applications/Clawdbox.app/Contents/MacOS/Clawdbox" ] && xcrun -f swiftc >/dev/null 2>&1 && { [ "$FORCE" = 1 ] || grep -q '^menubar/' <<<"$CHANGED"; }; then
   say "rebuilding Clawdbox.app"
-  menubar/install.sh || say "Clawdbox.app rebuild failed; the old one keeps running"
+  if menubar/install.sh; then REBUILT_AT=$(date +%s); else say "Clawdbox.app rebuild failed; the old one keeps running"; fi
 fi
 # Installs from before 0.4.4: tie the launch agents to Clawdbox.app by bundle id, so macOS stops
 # announcing "Clawdbox can run in the background" at every login (takes effect at next login).
@@ -131,5 +140,28 @@ elif pgrep -x Clawdbox >/dev/null 2>&1 && [ -d "$HOME/Applications/Clawdbox.app"
   open -g "$HOME/Applications/Clawdbox.app" || say "could not relaunch Clawdbox.app; open it yourself"
 else
   say "daemon is not installed as a launchd agent; restart it yourself if it is running"
+fi
+# A Clawdbox started before the rebuild still runs the old menu bar app: an instance opened outside
+# the login agent, or one the kickstart above did not replace. Builds from 0.5.1 relaunch themselves
+# when their bundle is replaced; older ones need this.
+if [ -n "${REBUILT_AT:-}" ]; then
+  sleep 3
+  for pid in $(pgrep -x Clawdbox 2>/dev/null || true); do
+    age=$(etime_seconds "$(ps -o etime= -p "$pid" 2>/dev/null)") || continue
+    if [ "$age" -gt $(( $(date +%s) - REBUILT_AT )) ]; then
+      say "Clawdbox (pid $pid) is still the old build; restarting it"
+      kill "$pid" 2>/dev/null || true
+      STALE=1
+    fi
+  done
+  if [ -n "${STALE:-}" ]; then
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Clawdbox >/dev/null 2>&1 || break; sleep 0.5; done
+    # the login agent brings its app back by itself; start it now if it is not running
+    if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+      launchctl kickstart "gui/$(id -u)/$LABEL" || true
+      sleep 3
+    fi
+    pgrep -x Clawdbox >/dev/null 2>&1 || open -g "$HOME/Applications/Clawdbox.app" || say "could not relaunch Clawdbox.app; open it yourself"
+  fi
 fi
 say "done: now at $TARGET_REF ($(short "$TARGET"))"

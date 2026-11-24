@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1
+
+### Changed
+- **Enable Themes** is now an on/off switch in the menu instead of a ticked item. Flipping it keeps the menu open,
+  so you see the digital Divoom change straight away. Clicking its label flips it too.
+
+### Fixed
+- An update that rebuilds the menu bar app now always runs the new build. Before, the old app could keep running
+  (with only the daemon restarted), so a new menu item such as Enable Themes did not appear until you quit Clawdbox.
+  The app now relaunches itself when its bundle is replaced, and the updater restarts any Clawdbox still running
+  from before the rebuild (this is what gets 0.5.0 apps onto 0.5.1).
+
 ## 0.5.0
 
 ### Added
