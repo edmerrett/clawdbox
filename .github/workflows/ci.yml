@@ -91,6 +91,11 @@ jobs:
           grep -q '^state: reading' check2.txt
           grep -q '^title: reading' check2.txt
           grep -q '^themes: off' check2.txt
+          echo "--- the Enable Themes switch is drawn in the accent colour when on (NSSwitch went grey in menus)"
+          "$APP" --snapshot-switch shots/switch-on.png
+          "$APP" --snapshot-switch shots/switch-off.png off
+          python3 test/switch-colour.py shots/switch-on.png on
+          python3 test/switch-colour.py shots/switch-off.png off
           echo "--- Enable Themes: the Christmas tree replaces the standard idle view"
           curl -sf -X POST 'http://127.0.0.1:7676/themes?enabled=1' >/dev/null
           curl -sf -X POST http://127.0.0.1:7676/show/idle >/dev/null
