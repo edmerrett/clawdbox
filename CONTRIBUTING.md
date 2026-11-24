@@ -61,7 +61,8 @@ Open an issue with: the Bluetooth name(s) it advertises, whether it pairs as a s
 ## Pull requests
 Keep them focused. `main` only changes through squash-merged PRs, and every check must pass: lint, format and tests
 on macOS and Linux with Node 20 and 22, a ruff check of the bridge, the Swift build and a live run of the menu bar
-app, and CodeQL. Add a CHANGELOG entry under `## Unreleased` for anything a user would notice.
+app, and CodeQL. Add a CHANGELOG entry under `## Unreleased` for anything a user would notice. A pull request that only changes Markdown or `docs/` skips
+the test steps (each job still reports, so it can merge as soon as they finish).
 
 ## Repository settings
 Branch and tag protection live in [`.github/rulesets/`](.github/rulesets). After changing them, a repository admin

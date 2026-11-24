@@ -9,7 +9,32 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # Docs-only pull requests (Markdown and docs/) skip the steps below. Every job still runs and
+  # reports under its own name, so the required checks pass; pushes to main always run everything.
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(git diff --name-only "$BASE...$HEAD")
+          echo "$files"
+          if grep -qvE '(\.md$|^docs/)' <<<"$files"; then code=true; else code=false; fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
   node:
+    needs: changes
     name: node ${{ matrix.node }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -20,23 +45,34 @@ jobs:
         node: [20, 22]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       # bluetooth-serial-port is an optionalDependency: npm skips it where it cannot build
       # (esbuild's platform binaries are optional too, so --omit=optional would break tsx)
       - run: npm ci --no-audit --no-fund --ignore-scripts
+        if: needs.changes.outputs.code == 'true'
       - run: npm run lint
+        if: needs.changes.outputs.code == 'true'
       - run: npm run format:check
+        if: needs.changes.outputs.code == 'true'
       - run: npm test
+        if: needs.changes.outputs.code == 'true'
       - run: npm run build
+        if: needs.changes.outputs.code == 'true'
       - run: node dist/cli.js send idle --mock
+        if: needs.changes.outputs.code == 'true'
       - run: node dist/cli.js update --check || test $? -eq 1
+        if: needs.changes.outputs.code == 'true'
       - run: bash -n install.sh && bash -n uninstall.sh && ./install.sh --help
+        if: needs.changes.outputs.code == 'true'
   python:
+    needs: changes
     name: bridge (python ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -45,32 +81,45 @@ jobs:
         python: ['3.10', '3.12']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: needs.changes.outputs.code == 'true'
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r bridge/requirements.txt ruff
+        if: needs.changes.outputs.code == 'true'
       - run: ruff check bridge scripts
+        if: needs.changes.outputs.code == 'true'
       - run: ruff format --check bridge scripts
+        if: needs.changes.outputs.code == 'true'
       - run: python -m py_compile bridge/clawdbox_ble.py
+        if: needs.changes.outputs.code == 'true'
   swift:
+    needs: changes
     name: menu bar app builds and reads the daemon
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+        if: needs.changes.outputs.code == 'true'
       - run: npm run build
+        if: needs.changes.outputs.code == 'true'
       - run: menubar/build.sh build
+        if: needs.changes.outputs.code == 'true'
       # Run a real daemon against the mock panel and make sure the app renders its state.
       - name: menu bar app reports connection and current mode
+        if: needs.changes.outputs.code == 'true'
         run: |
           set -o pipefail
           node dist/cli.js daemon --mock --port 7676 --hold-ms 0 > daemon.log 2>&1 &
@@ -166,9 +215,10 @@ jobs:
       # Last: on CI's detached HEAD the installer switches the checkout to main, which would
       # otherwise swap the daemon and test files under the steps above.
       - name: one-shot installer (build-only flags)
+        if: needs.changes.outputs.code == 'true'
         run: ./install.sh --no-hooks --no-launchd --no-menubar
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: always() && needs.changes.outputs.code == 'true'
         with:
           name: menubar-screenshot
           path: |
